@@ -25,3 +25,9 @@ coverage/
 # Build
 dist/
 build/
+
+# Data files
+data/
+*.db
+*.db-*
+data*.txt

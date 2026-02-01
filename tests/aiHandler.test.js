@@ -147,7 +147,7 @@ describe('AI Handler Module', () => {
             await fetchCopilotResponse('test');
 
             const callArgs = axios.post.mock.calls[0][1];
-            expect(callArgs.temperature).toBe(0.8);
+            expect(callArgs.temperature).toBe(0.85);
         });
 
     });

@@ -1,14 +1,19 @@
 /**
- * AI WhatsApp Chatbot - Main Bot Service
+ * AI WhatsApp Chatbot - Main Bot Service v2.0
  * 
  * Bot WhatsApp menggunakan @whiskeysockets/baileys dengan:
  * - Persona AI "Tama" via Copilot API
+ * - Unlimited conversation memory (SQLite)
+ * - Image/file understanding (Vision API)
+ * - Location sharing (OpenStreetMap)
+ * - Reply detection
+ * - Ethnicity detection (fun feature)
  * - Auto reconnect handling
  * - Health Check server
  * - Cloudflare DNS automation
  * 
  * @author Tama (el-pablos)
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 // Load environment variables
@@ -19,14 +24,42 @@ const {
     useMultiFileAuthState, 
     DisconnectReason,
     fetchLatestBaileysVersion,
-    makeCacheableSignalKeyStore
+    makeCacheableSignalKeyStore,
+    downloadMediaMessage
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
+const fs = require('fs');
+const path = require('path');
 
-const { fetchCopilotResponse } = require('./aiHandler');
+// Import modules
+const { fetchCopilotResponse, fetchVisionResponse, getSystemPrompt } = require('./aiHandler');
 const { startHealthCheckServer } = require('./healthCheck');
 const { syncDNSRecord } = require('./dnsUpdater');
+const { 
+    initDatabase, 
+    saveMessage, 
+    getConversationHistory, 
+    getMessageById,
+    closeDatabase 
+} = require('./database');
+const { 
+    downloadMedia, 
+    getMediaType, 
+    getMediaCaption, 
+    hasMedia,
+    analyzeImage,
+    analyzeDocument,
+    detectEthnicity
+} = require('./mediaHandler');
+const {
+    searchPlace,
+    formatLocationMessage,
+    formatLocationText,
+    parseLocationRequest,
+    handleIncomingLocation,
+    isLocationRequest
+} = require('./locationHandler');
 
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
@@ -49,6 +82,9 @@ const RECONNECT_INTERVAL = 5000; // 5 detik
 const AUTH_METHOD = process.env.WA_AUTH_METHOD || 'qr'; // 'qr' atau 'pairing'
 const PHONE_NUMBER = process.env.WA_PHONE_NUMBER || '';
 
+// Auth folder
+const AUTH_FOLDER = 'auth_info_baileys';
+
 /**
  * Inisialisasi dan connect ke WhatsApp
  */
@@ -62,8 +98,11 @@ const connectToWhatsApp = async () => {
     pairingCodeRequested = false;
 
     try {
+        // Initialize database
+        initDatabase();
+        
         // Load auth state dari folder
-        const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+        const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
         
         // Fetch versi Baileys terbaru
         const { version } = await fetchLatestBaileysVersion();
@@ -81,7 +120,11 @@ const connectToWhatsApp = async () => {
             markOnlineOnConnect: true,
             generateHighQualityLinkPreview: false,
             syncFullHistory: false,
-            getMessage: async () => undefined // Tidak perlu fetch ulang pesan
+            getMessage: async (key) => {
+                // Try to get message from database
+                const msg = getMessageById(key.id);
+                return msg ? { conversation: msg.content } : undefined;
+            }
         });
 
         // Handle credentials update
@@ -104,9 +147,6 @@ const connectToWhatsApp = async () => {
 
 /**
  * Handle connection state updates
- * 
- * @param {Object} update - Connection update object
- * @param {Object} state - Auth state
  */
 const handleConnectionUpdate = async (update, state) => {
     const { connection, lastDisconnect, qr } = update;
@@ -116,9 +156,7 @@ const handleConnectionUpdate = async (update, state) => {
         if (PHONE_NUMBER) {
             pairingCodeRequested = true;
             console.log('[Bot] Requesting pairing code untuk nomor:', PHONE_NUMBER);
-            console.log('');
             
-            // Delay sedikit untuk memastikan socket ready
             setTimeout(async () => {
                 try {
                     const code = await sock.requestPairingCode(PHONE_NUMBER);
@@ -131,23 +169,20 @@ const handleConnectionUpdate = async (update, state) => {
                     console.log('║  Pilih "Link with phone number instead"                   ║');
                     console.log('║  Masukkan code di atas                                    ║');
                     console.log('╚═══════════════════════════════════════════════════════════╝');
-                    console.log('');
                 } catch (err) {
                     console.error('[Bot] Error requesting pairing code:', err.message);
                     pairingCodeRequested = false;
                 }
             }, 3000);
         } else {
-            console.error('[Bot] WA_PHONE_NUMBER tidak diset! Set di .env untuk pairing method');
+            console.error('[Bot] WA_PHONE_NUMBER tidak diset!');
         }
     }
 
     // Handle QR code method
     if (AUTH_METHOD === 'qr' && qr) {
         console.log('[Bot] QR Code received - scan dengan WA kamu ya bro! 📱');
-        console.log('');
         qrcode.generate(qr, { small: true });
-        console.log('');
     }
 
     if (connection === 'close') {
@@ -184,7 +219,7 @@ const scheduleReconnect = () => {
     }
 
     reconnectAttempts++;
-    const delay = RECONNECT_INTERVAL * reconnectAttempts; // Exponential backoff sederhana
+    const delay = RECONNECT_INTERVAL * reconnectAttempts;
     
     console.log(`[Bot] Reconnecting in ${delay/1000}s... (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
     
@@ -195,11 +230,8 @@ const scheduleReconnect = () => {
 
 /**
  * Handle incoming messages
- * 
- * @param {Object} param0 - Messages upsert event
  */
 const handleMessagesUpsert = async ({ messages, type }) => {
-    // Hanya proses pesan baru (bukan history)
     if (type !== 'notify') return;
 
     for (const msg of messages) {
@@ -213,58 +245,340 @@ const handleMessagesUpsert = async ({ messages, type }) => {
 
 /**
  * Process individual message
- * 
- * @param {Object} msg - Message object dari Baileys
  */
 const processMessage = async (msg) => {
-    // Skip jika:
-    // 1. Pesan dari diri sendiri (key.fromMe)
-    // 2. Status broadcast (status@broadcast)
-    // 3. Tidak ada conversation/extendedTextMessage (bukan text)
-    
+    // Skip if from self or status broadcast
     if (msg.key.fromMe) return;
     if (msg.key.remoteJid === 'status@broadcast') return;
+
+    const sender = msg.key.remoteJid;
+    const pushName = msg.pushName || 'Bro';
+    const messageId = msg.key.id;
+
+    // Extract quoted message info (for reply detection)
+    const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+    const quotedMessageId = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
+    let quotedContent = null;
+    
+    if (quotedMsg) {
+        quotedContent = quotedMsg.conversation || 
+                       quotedMsg.extendedTextMessage?.text ||
+                       '[media]';
+        console.log(`[Bot] User is replying to: "${quotedContent.slice(0, 50)}..."`);
+    }
+
+    // Check for location message from user
+    const locationMsg = msg.message?.locationMessage;
+    if (locationMsg) {
+        await handleUserLocation(msg, sender, pushName, locationMsg);
+        return;
+    }
+
+    // Check for media message
+    if (hasMedia(msg)) {
+        await handleMediaMessage(msg, sender, pushName, quotedContent, messageId);
+        return;
+    }
 
     // Extract text content
     const textContent = msg.message?.conversation || 
                        msg.message?.extendedTextMessage?.text ||
                        null;
 
-    if (!textContent) return; // Skip non-text messages
+    if (!textContent) return;
 
-    const sender = msg.key.remoteJid;
-    const pushName = msg.pushName || 'Bro';
+    console.log(`[Bot] Pesan dari ${pushName} (${sender}): ${textContent}`);
 
-    console.log(`[Bot] Pesan masuk dari ${pushName} (${sender}): ${textContent}`);
+    // Check for special commands
+    if (await handleSpecialCommands(msg, sender, textContent)) {
+        return;
+    }
 
-    // Kirim "typing" indicator
+    // Check for location request
+    const locationReq = parseLocationRequest(textContent);
+    if (locationReq) {
+        await handleLocationRequest(msg, sender, locationReq.query);
+        return;
+    }
+
+    // Save user message to database
+    saveMessage({
+        chatId: sender,
+        senderJid: sender,
+        senderName: pushName,
+        role: 'user',
+        content: textContent,
+        messageId: messageId,
+        quotedMessageId: quotedMessageId,
+        quotedContent: quotedContent
+    });
+
+    // Send typing indicator
     await sock.sendPresenceUpdate('composing', sender);
 
     try {
-        // Fetch AI response dengan persona Tama
-        const aiResponse = await fetchCopilotResponse(textContent);
-
-        console.log(`[Bot] Response untuk ${pushName}: ${aiResponse}`);
-
-        // Kirim response
-        await sock.sendMessage(sender, { 
-            text: aiResponse 
-        }, { 
-            quoted: msg // Quote pesan original
+        // Get conversation history from database
+        const history = getConversationHistory(sender);
+        
+        // Fetch AI response with context
+        const aiResponse = await fetchCopilotResponse(textContent, history, {
+            quotedContent: quotedContent
         });
+
+        console.log(`[Bot] Response untuk ${pushName}: ${aiResponse.slice(0, 100)}...`);
+
+        // Save AI response to database
+        saveMessage({
+            chatId: sender,
+            senderJid: 'bot',
+            senderName: 'Tama',
+            role: 'assistant',
+            content: aiResponse,
+            messageId: `bot_${Date.now()}`
+        });
+
+        // Send response
+        await sock.sendMessage(sender, { text: aiResponse }, { quoted: msg });
 
     } catch (error) {
         console.error('[Bot] Error getting AI response:', error.message);
-        
-        // Kirim fallback response
         await sock.sendMessage(sender, {
             text: 'duh error euy sistem w 😓 coba lgi nnt ya'
-        }, {
-            quoted: msg
-        });
+        }, { quoted: msg });
     }
 
-    // Clear typing indicator
+    await sock.sendPresenceUpdate('paused', sender);
+};
+
+/**
+ * Handle special commands
+ */
+const handleSpecialCommands = async (msg, sender, text) => {
+    const lowerText = text.toLowerCase().trim();
+
+    // Command: /clear - clear conversation history
+    if (lowerText === '/clear' || lowerText === '/reset') {
+        const { clearConversation } = require('./database');
+        clearConversation(sender);
+        await sock.sendMessage(sender, { 
+            text: 'okei bro, history chat udh w hapus. fresh start! 🔄' 
+        }, { quoted: msg });
+        return true;
+    }
+
+    // Command: /stats - show stats
+    if (lowerText === '/stats') {
+        const { getStats } = require('./database');
+        const stats = getStats();
+        await sock.sendMessage(sender, {
+            text: `📊 *Bot Stats*\n\nTotal pesan: ${stats.totalMessages}\nTotal users: ${stats.totalUsers}\nTotal chats: ${stats.totalChats}`
+        }, { quoted: msg });
+        return true;
+    }
+
+    // Command: /help
+    if (lowerText === '/help' || lowerText === '/bantuan') {
+        await sock.sendMessage(sender, {
+            text: `🤖 *Tama Bot v2.0*\n\nFitur:\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w bisa analisis\n• Kirim lokasi - w tau dimana lu\n• Minta lokasi tempat - "kirim lokasi starbucks"\n• Reply chat - w paham konteks nya\n\nCommands:\n• /clear - hapus history chat\n• /stats - lihat statistik\n• /tebaksuku - kirim foto muka, w tebak suku nya (fun)\n• /help - bantuan ini\n\neuy tinggal chat aja santai 😎`
+        }, { quoted: msg });
+        return true;
+    }
+
+    // Command: /tebaksuku - trigger ethnicity detection
+    if (lowerText === '/tebaksuku' || lowerText === '/tebak suku') {
+        await sock.sendMessage(sender, {
+            text: 'kirim foto muka nya dong bro, ntar w tebak suku nya 📸\n\n(kirim gambar abis ini)'
+        }, { quoted: msg });
+        // Set flag untuk next image
+        return true;
+    }
+
+    return false;
+};
+
+/**
+ * Handle media messages (images, documents, etc)
+ */
+const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageId) => {
+    const mediaType = getMediaType(msg);
+    const caption = getMediaCaption(msg);
+    
+    console.log(`[Bot] Media ${mediaType} dari ${pushName}: ${caption || '(no caption)'}`);
+
+    await sock.sendPresenceUpdate('composing', sender);
+
+    try {
+        // Download media
+        const buffer = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            { logger: console, reuploadRequest: sock.updateMediaMessage }
+        );
+
+        const mimetype = msg.message?.imageMessage?.mimetype ||
+                        msg.message?.documentMessage?.mimetype ||
+                        'application/octet-stream';
+
+        // Save to database
+        saveMessage({
+            chatId: sender,
+            senderJid: sender,
+            senderName: pushName,
+            role: 'user',
+            content: caption || `[${mediaType}]`,
+            messageId: messageId,
+            mediaType: mediaType,
+            mediaCaption: caption
+        });
+
+        let aiResponse;
+
+        // Check if user wants ethnicity detection
+        const lowerCaption = (caption || '').toLowerCase();
+        if (mediaType === 'image' && (lowerCaption.includes('tebak suku') || lowerCaption.includes('suku apa'))) {
+            aiResponse = await detectEthnicity(buffer, mimetype);
+        }
+        // Handle image with vision
+        else if (mediaType === 'image') {
+            const history = getConversationHistory(sender);
+            const base64 = buffer.toString('base64');
+            aiResponse = await fetchVisionResponse(base64, mimetype, caption, history);
+        }
+        // Handle documents
+        else if (mediaType === 'document') {
+            const filename = msg.message?.documentMessage?.fileName || 'unknown';
+            const docInfo = await analyzeDocument(buffer, filename, mimetype);
+            
+            const history = getConversationHistory(sender);
+            aiResponse = await fetchCopilotResponse(
+                `User kirim file: ${filename}`,
+                history,
+                { mediaDescription: docInfo }
+            );
+        }
+        else {
+            aiResponse = `oh ${mediaType} ya, w liat nih 👀`;
+        }
+
+        // Save response
+        saveMessage({
+            chatId: sender,
+            senderJid: 'bot',
+            senderName: 'Tama',
+            role: 'assistant',
+            content: aiResponse,
+            messageId: `bot_${Date.now()}`
+        });
+
+        await sock.sendMessage(sender, { text: aiResponse }, { quoted: msg });
+
+    } catch (error) {
+        console.error('[Bot] Error processing media:', error.message);
+        await sock.sendMessage(sender, {
+            text: 'duh error pas proses media nya 😓 coba kirim ulang bro'
+        }, { quoted: msg });
+    }
+
+    await sock.sendPresenceUpdate('paused', sender);
+};
+
+/**
+ * Handle location request (user minta lokasi tempat)
+ */
+const handleLocationRequest = async (msg, sender, query) => {
+    console.log(`[Bot] Location request: ${query}`);
+    
+    await sock.sendPresenceUpdate('composing', sender);
+
+    try {
+        const places = await searchPlace(query, { limit: 3 });
+
+        if (places.length === 0) {
+            await sock.sendMessage(sender, {
+                text: `aduh ga nemu "${query}" jir 😭 coba pake kata kunci lain bro`
+            }, { quoted: msg });
+            return;
+        }
+
+        const place = places[0]; // Ambil yang paling relevan
+
+        // Send text info first
+        await sock.sendMessage(sender, {
+            text: formatLocationText(place)
+        }, { quoted: msg });
+
+        // Then send location
+        await sock.sendMessage(sender, formatLocationMessage(place));
+
+        // Save to database
+        saveMessage({
+            chatId: sender,
+            senderJid: 'bot',
+            senderName: 'Tama',
+            role: 'assistant',
+            content: `[Shared location: ${place.name}]`,
+            messageId: `bot_${Date.now()}`
+        });
+
+    } catch (error) {
+        console.error('[Bot] Error handling location request:', error.message);
+        await sock.sendMessage(sender, {
+            text: 'duh error pas nyari lokasi 😓 coba lgi ya'
+        }, { quoted: msg });
+    }
+
+    await sock.sendPresenceUpdate('paused', sender);
+};
+
+/**
+ * Handle incoming user location
+ */
+const handleUserLocation = async (msg, sender, pushName, locationMsg) => {
+    console.log(`[Bot] Received location from ${pushName}`);
+
+    await sock.sendPresenceUpdate('composing', sender);
+
+    try {
+        const locationInfo = await handleIncomingLocation(locationMsg);
+        
+        // Save to database
+        saveMessage({
+            chatId: sender,
+            senderJid: sender,
+            senderName: pushName,
+            role: 'user',
+            content: `[Shared location: ${locationInfo.address}]`,
+            messageId: msg.key.id,
+            mediaType: 'location'
+        });
+
+        // Get history and respond
+        const history = getConversationHistory(sender);
+        const aiResponse = await fetchCopilotResponse(
+            `User share lokasi nya di: ${locationInfo.address}`,
+            history
+        );
+
+        // Save response
+        saveMessage({
+            chatId: sender,
+            senderJid: 'bot',
+            senderName: 'Tama',
+            role: 'assistant',
+            content: aiResponse,
+            messageId: `bot_${Date.now()}`
+        });
+
+        await sock.sendMessage(sender, { text: aiResponse }, { quoted: msg });
+
+    } catch (error) {
+        console.error('[Bot] Error handling location:', error.message);
+        await sock.sendMessage(sender, {
+            text: 'nice, w liat lokasi lu 📍'
+        }, { quoted: msg });
+    }
+
     await sock.sendPresenceUpdate('paused', sender);
 };
 
@@ -273,6 +587,8 @@ const processMessage = async (msg) => {
  */
 const gracefulShutdown = async (signal) => {
     console.log(`\n[Bot] Received ${signal}, shutting down gracefully...`);
+    
+    closeDatabase();
     
     if (sock) {
         try {
@@ -290,8 +606,9 @@ const gracefulShutdown = async (signal) => {
  */
 const main = async () => {
     console.log('╔════════════════════════════════════════════╗');
-    console.log('║  AI WhatsApp Chatbot - Tama Clone v1.0.0   ║');
+    console.log('║  AI WhatsApp Chatbot - Tama Clone v2.0.0   ║');
     console.log('║  by el-pablos                              ║');
+    console.log('║  Features: Memory, Vision, Location, Reply ║');
     console.log('╚════════════════════════════════════════════╝');
     console.log('');
 
@@ -304,9 +621,6 @@ const main = async () => {
         console.log('[Boot] Syncing DNS record to Cloudflare...');
         const dnsResult = await syncDNSRecord();
         console.log(`[Boot] DNS sync result: ${dnsResult.action}`);
-        if (dnsResult.action === 'failed') {
-            console.warn('[Boot] DNS sync failed, but continuing anyway...');
-        }
 
         // 3. Connect ke WhatsApp
         console.log('[Boot] Connecting to WhatsApp...');
@@ -318,14 +632,12 @@ const main = async () => {
     }
 };
 
-// Handle process signals untuk graceful shutdown
+// Handle process signals
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
     console.error('[Bot] Uncaught Exception:', error);
-    // Jangan exit, biarkan reconnect logic handle
 });
 
 process.on('unhandledRejection', (reason, promise) => {
