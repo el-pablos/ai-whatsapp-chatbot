@@ -1,5 +1,5 @@
 /**
- * AI WhatsApp Chatbot - Main Bot Service v2.0
+ * AI WhatsApp Chatbot - Main Bot Service v2.1
  * 
  * Bot WhatsApp menggunakan @whiskeysockets/baileys dengan:
  * - Persona AI "Tama" via Copilot API
@@ -8,12 +8,13 @@
  * - Location sharing (OpenStreetMap)
  * - Reply detection
  * - Ethnicity detection (fun feature)
+ * - Calendar & holiday checker
  * - Auto reconnect handling
  * - Health Check server
  * - Cloudflare DNS automation
  * 
- * @author Tama (el-pablos)
- * @version 2.0.0
+ * @author Tama El Pablo
+ * @version 2.1.0
  */
 
 // Load environment variables
@@ -60,6 +61,12 @@ const {
     handleIncomingLocation,
     isLocationRequest
 } = require('./locationHandler');
+const {
+    detectCalendarIntent,
+    formatCalendarResponse,
+    parseDateFromString,
+    getTodayInfo
+} = require('./calendarHandler');
 
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
@@ -301,6 +308,37 @@ const processMessage = async (msg) => {
         return;
     }
 
+    // Check for calendar-related queries (natural language)
+    const calendarIntent = detectCalendarIntent(textContent);
+    if (calendarIntent) {
+        let calendarResponse = null;
+        
+        // Check if user provided date info in the message
+        const parsedDate = parseDateFromString(textContent);
+        
+        if (calendarIntent.intent === 'zodiac' && parsedDate) {
+            calendarResponse = formatCalendarResponse('zodiac', { 
+                month: parsedDate.month, 
+                day: parsedDate.day 
+            });
+        } else if (calendarIntent.intent === 'birthday' && parsedDate && parsedDate.year) {
+            calendarResponse = formatCalendarResponse('birthday', {
+                year: parsedDate.year,
+                month: parsedDate.month,
+                day: parsedDate.day
+            });
+        } else if (calendarIntent.intent === 'calendar') {
+            calendarResponse = formatCalendarResponse('calendar', { month: calendarIntent.month });
+        } else {
+            calendarResponse = formatCalendarResponse(calendarIntent.intent);
+        }
+        
+        if (calendarResponse) {
+            await sock.sendMessage(sender, { text: calendarResponse }, { quoted: msg });
+            return;
+        }
+    }
+
     // Save user message to database
     saveMessage({
         chatId: sender,
@@ -379,8 +417,75 @@ const handleSpecialCommands = async (msg, sender, text) => {
     // Command: /help
     if (lowerText === '/help' || lowerText === '/bantuan') {
         await sock.sendMessage(sender, {
-            text: `🤖 *Tama Bot v2.0*\n\nFitur:\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w bisa analisis\n• Kirim lokasi - w tau dimana lu\n• Minta lokasi tempat - "kirim lokasi starbucks"\n• Reply chat - w paham konteks nya\n\nCommands:\n• /clear - hapus history chat\n• /stats - lihat statistik\n• /tebaksuku - kirim foto muka, w tebak suku nya (fun)\n• /help - bantuan ini\n\neuy tinggal chat aja santai 😎`
+            text: `🤖 *Tama Bot v2.1*\n\nFitur:\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w bisa analisis\n• Kirim lokasi - w tau dimana lu\n• Minta lokasi tempat - "kirim lokasi starbucks"\n• Reply chat - w paham konteks nya\n• Cek tanggal/kalender - "tanggal hari ini"\n\nCommands:\n• /clear - hapus history chat\n• /stats - lihat statistik\n• /kalender - lihat kalender bulan ini\n• /libur - cek libur nasional\n• /zodiak [tgl] - cek zodiak\n• /tebaksuku - kirim foto muka, w tebak suku nya (fun)\n• /help - bantuan ini\n\neuy tinggal chat aja santai 😎`
         }, { quoted: msg });
+        return true;
+    }
+
+    // Command: /kalender - show calendar
+    if (lowerText === '/kalender' || lowerText === '/calendar') {
+        const calendarText = formatCalendarResponse('calendar');
+        await sock.sendMessage(sender, { text: calendarText }, { quoted: msg });
+        return true;
+    }
+
+    // Command: /libur - show upcoming holidays
+    if (lowerText === '/libur' || lowerText === '/holiday' || lowerText === '/holidays') {
+        const holidayText = formatCalendarResponse('holidays');
+        await sock.sendMessage(sender, { text: holidayText }, { quoted: msg });
+        return true;
+    }
+
+    // Command: /today - show today info
+    if (lowerText === '/today' || lowerText === '/hari ini' || lowerText === '/tanggal') {
+        const todayText = formatCalendarResponse('today');
+        await sock.sendMessage(sender, { text: todayText }, { quoted: msg });
+        return true;
+    }
+
+    // Command: /zodiak [date] - check zodiac
+    if (lowerText.startsWith('/zodiak') || lowerText.startsWith('/zodiac')) {
+        const dateStr = lowerText.replace(/^\/zodia[ck]\s*/i, '').trim();
+        if (dateStr) {
+            const parsed = parseDateFromString(dateStr);
+            if (parsed) {
+                const zodiacText = formatCalendarResponse('zodiac', { month: parsed.month, day: parsed.day });
+                await sock.sendMessage(sender, { text: zodiacText }, { quoted: msg });
+            } else {
+                await sock.sendMessage(sender, { 
+                    text: 'format tanggal nya salah bro, coba: /zodiak 1 januari atau /zodiak 1/1' 
+                }, { quoted: msg });
+            }
+        } else {
+            await sock.sendMessage(sender, { 
+                text: 'tambahin tanggal lahir nya dong\ncontoh: /zodiak 1 januari atau /zodiak 1/1' 
+            }, { quoted: msg });
+        }
+        return true;
+    }
+
+    // Command: /ultah [date] - check birthday info
+    if (lowerText.startsWith('/ultah') || lowerText.startsWith('/birthday')) {
+        const dateStr = lowerText.replace(/^\/(ultah|birthday)\s*/i, '').trim();
+        if (dateStr) {
+            const parsed = parseDateFromString(dateStr);
+            if (parsed && parsed.year) {
+                const birthdayText = formatCalendarResponse('birthday', { 
+                    year: parsed.year, 
+                    month: parsed.month, 
+                    day: parsed.day 
+                });
+                await sock.sendMessage(sender, { text: birthdayText }, { quoted: msg });
+            } else {
+                await sock.sendMessage(sender, { 
+                    text: 'tambahin tahun lahir nya jg dong\ncontoh: /ultah 1 januari 2000 atau /ultah 1/1/2000' 
+                }, { quoted: msg });
+            }
+        } else {
+            await sock.sendMessage(sender, { 
+                text: 'kasih tanggal lahir lengkap nya dong\ncontoh: /ultah 1 januari 2000' 
+            }, { quoted: msg });
+        }
         return true;
     }
 

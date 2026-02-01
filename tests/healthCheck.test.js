@@ -96,7 +96,7 @@ describe('Health Check Server Module', () => {
             const body = JSON.parse(response.body);
 
             expect(body.service).toContain('Tama');
-            expect(body.version).toBe('1.0.0');
+            expect(body.version).toBe('2.1.0');
         });
 
     });
