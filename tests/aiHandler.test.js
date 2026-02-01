@@ -1,0 +1,263 @@
+/**
+ * Unit Tests - AI Handler Module
+ * 
+ * Test cases untuk validasi:
+ * 1. Fungsi fetchCopilotResponse dengan mock axios
+ * 2. Error handling ketika API gagal
+ * 3. Validasi persona Tama dalam output
+ */
+
+const axios = require('axios');
+
+// Mock axios
+jest.mock('axios');
+
+// Import module setelah mock
+const {
+    fetchCopilotResponse,
+    validateTamaPersona,
+    getRandomErrorResponse,
+    TAMA_SYSTEM_PROMPT,
+    ERROR_RESPONSES
+} = require('../src/aiHandler');
+
+describe('AI Handler Module', () => {
+
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    describe('fetchCopilotResponse', () => {
+
+        it('should return AI response when API call is successful', async () => {
+            // Mock successful API response
+            const mockResponse = {
+                data: {
+                    choices: [{
+                        message: {
+                            content: 'wah gampang jir, bntar w jelasin ya 😭'
+                        }
+                    }]
+                }
+            };
+            axios.post.mockResolvedValue(mockResponse);
+
+            const result = await fetchCopilotResponse('halo, gimana caranya belajar coding?');
+
+            expect(result).toBe('wah gampang jir, bntar w jelasin ya 😭');
+            expect(axios.post).toHaveBeenCalledTimes(1);
+            expect(axios.post).toHaveBeenCalledWith(
+                expect.stringContaining('/v1/chat/completions'),
+                expect.objectContaining({
+                    model: expect.any(String),
+                    messages: expect.arrayContaining([
+                        expect.objectContaining({ role: 'system' }),
+                        expect.objectContaining({ role: 'user', content: 'halo, gimana caranya belajar coding?' })
+                    ])
+                }),
+                expect.any(Object)
+            );
+        });
+
+        it('should return error response when API returns 500', async () => {
+            // Mock API error
+            axios.post.mockRejectedValue({
+                response: {
+                    status: 500,
+                    data: { error: 'Internal Server Error' }
+                },
+                message: 'Request failed with status code 500'
+            });
+
+            const result = await fetchCopilotResponse('test message');
+
+            // Should return one of the error responses
+            expect(ERROR_RESPONSES).toContain(result);
+        });
+
+        it('should return error response when API returns 404', async () => {
+            axios.post.mockRejectedValue({
+                response: {
+                    status: 404,
+                    data: { error: 'Not Found' }
+                },
+                message: 'Request failed with status code 404'
+            });
+
+            const result = await fetchCopilotResponse('test message');
+
+            expect(ERROR_RESPONSES).toContain(result);
+        });
+
+        it('should return error response when network timeout', async () => {
+            axios.post.mockRejectedValue({
+                code: 'ECONNABORTED',
+                message: 'timeout of 30000ms exceeded'
+            });
+
+            const result = await fetchCopilotResponse('test message');
+
+            expect(ERROR_RESPONSES).toContain(result);
+        });
+
+        it('should return error response when response structure is invalid', async () => {
+            axios.post.mockResolvedValue({
+                data: {
+                    // Missing choices array
+                    result: 'invalid'
+                }
+            });
+
+            const result = await fetchCopilotResponse('test message');
+
+            expect(ERROR_RESPONSES).toContain(result);
+        });
+
+        it('should include conversation history in API call', async () => {
+            const mockResponse = {
+                data: {
+                    choices: [{
+                        message: { content: 'test response jir' }
+                    }]
+                }
+            };
+            axios.post.mockResolvedValue(mockResponse);
+
+            const history = [
+                { role: 'user', content: 'previous message' },
+                { role: 'assistant', content: 'previous response' }
+            ];
+
+            await fetchCopilotResponse('new message', history);
+
+            const callArgs = axios.post.mock.calls[0][1];
+            expect(callArgs.messages.length).toBe(4); // system + 2 history + user
+        });
+
+        it('should use correct temperature for creative responses', async () => {
+            const mockResponse = {
+                data: {
+                    choices: [{
+                        message: { content: 'wkwkwk' }
+                    }]
+                }
+            };
+            axios.post.mockResolvedValue(mockResponse);
+
+            await fetchCopilotResponse('test');
+
+            const callArgs = axios.post.mock.calls[0][1];
+            expect(callArgs.temperature).toBe(0.8);
+        });
+
+    });
+
+    describe('validateTamaPersona', () => {
+
+        it('should validate response with Tama keywords as valid', () => {
+            const response = 'wah gampang jir, w jelasin deh bentar yak 😭';
+            const result = validateTamaPersona(response);
+
+            expect(result.isValid).toBe(true);
+            expect(result.tamaKeywordsFound.length).toBeGreaterThan(0);
+            expect(result.formalKeywordsFound.length).toBe(0);
+        });
+
+        it('should detect formal keywords as invalid', () => {
+            const response = 'Saya akan membantu Anda dengan senang hati, silakan tanyakan.';
+            const result = validateTamaPersona(response);
+
+            expect(result.isValid).toBe(false);
+            expect(result.formalKeywordsFound).toContain('saya');
+            expect(result.formalKeywordsFound).toContain('anda');
+        });
+
+        it('should detect emoji presence', () => {
+            const responseWithEmoji = 'test 😭';
+            const responseNoEmoji = 'test biasa';
+
+            expect(validateTamaPersona(responseWithEmoji).hasEmoji).toBe(true);
+            expect(validateTamaPersona(responseNoEmoji).hasEmoji).toBe(false);
+        });
+
+        it('should calculate persona score correctly', () => {
+            // Response dengan banyak keyword Tama
+            const goodResponse = 'wkwkwk jir gw gatau sih yak';
+            const goodResult = validateTamaPersona(goodResponse);
+
+            // Response dengan keyword formal
+            const badResponse = 'saya tidak tahu';
+            const badResult = validateTamaPersona(badResponse);
+
+            expect(goodResult.score).toBeGreaterThan(badResult.score);
+        });
+
+        it('should find multiple Tama keywords', () => {
+            const response = 'akh gelo jir w gatau bngt sih gimana';
+            const result = validateTamaPersona(response);
+
+            expect(result.tamaKeywordsFound).toContain('w');
+            expect(result.tamaKeywordsFound).toContain('jir');
+            expect(result.tamaKeywordsFound).toContain('sih');
+        });
+
+    });
+
+    describe('getRandomErrorResponse', () => {
+
+        it('should return a string from ERROR_RESPONSES array', () => {
+            const result = getRandomErrorResponse();
+            expect(typeof result).toBe('string');
+            expect(ERROR_RESPONSES).toContain(result);
+        });
+
+        it('should return different responses over multiple calls (randomness)', () => {
+            const results = new Set();
+            // Call multiple times to check randomness
+            for (let i = 0; i < 50; i++) {
+                results.add(getRandomErrorResponse());
+            }
+            // Should have more than 1 unique response (probabilistically)
+            expect(results.size).toBeGreaterThan(1);
+        });
+
+    });
+
+    describe('TAMA_SYSTEM_PROMPT', () => {
+
+        it('should contain key persona instructions', () => {
+            expect(TAMA_SYSTEM_PROMPT).toContain('Tama');
+            expect(TAMA_SYSTEM_PROMPT).toContain('jir');
+            expect(TAMA_SYSTEM_PROMPT).toContain('w');
+            expect(TAMA_SYSTEM_PROMPT).toContain('gw');
+        });
+
+        it('should prohibit formal language', () => {
+            expect(TAMA_SYSTEM_PROMPT.toLowerCase()).toContain('saya');
+            expect(TAMA_SYSTEM_PROMPT).toContain('JANGAN');
+        });
+
+        it('should include typo examples', () => {
+            expect(TAMA_SYSTEM_PROMPT).toContain('bntr');
+            expect(TAMA_SYSTEM_PROMPT).toContain('gatau');
+        });
+
+    });
+
+    describe('ERROR_RESPONSES', () => {
+
+        it('should have at least 3 different error responses', () => {
+            expect(ERROR_RESPONSES.length).toBeGreaterThanOrEqual(3);
+        });
+
+        it('all error responses should contain Tama characteristics', () => {
+            ERROR_RESPONSES.forEach(response => {
+                const validation = validateTamaPersona(response);
+                // Each error response should have at least some Tama flavor
+                expect(validation.tamaKeywordsFound.length + (validation.hasEmoji ? 1 : 0)).toBeGreaterThan(0);
+            });
+        });
+
+    });
+
+});
