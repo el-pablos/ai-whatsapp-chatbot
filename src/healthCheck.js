@@ -1,11 +1,15 @@
 /**
  * Health Check Server Module
  * 
- * Server Express sederhana yang menyediakan endpoint untuk monitoring
- * status bot. Akan diakses via domain Cloudflare.
+ * Server Express yang menyediakan endpoint untuk monitoring
+ * status bot dengan dashboard stats dan user list.
+ * 
+ * @author Tama El Pablo
+ * @version 2.1.0
  */
 
 const express = require('express');
+const { getStats, getAllUsers, cleanupExpiredSessions } = require('./database');
 
 const PORT = process.env.HEALTH_CHECK_PORT || 8008;
 
@@ -34,7 +38,15 @@ const startHealthCheckServer = () => {
                 uptimeFormatted: formatUptime(uptime),
                 timestamp: new Date().toISOString(),
                 service: 'AI WhatsApp Chatbot - Tama',
-                version: '1.0.0'
+                version: '2.1.0',
+                author: 'Tama El Pablo',
+                endpoints: {
+                    health: '/health',
+                    status: '/status',
+                    dashboard: '/dashboard',
+                    users: '/users',
+                    stats: '/stats'
+                }
             });
         });
 
@@ -61,6 +73,128 @@ const startHealthCheckServer = () => {
                 pid: process.pid,
                 nodeVersion: process.version
             });
+        });
+
+        // Dashboard endpoint dengan stats lengkap
+        app.get('/dashboard', (req, res) => {
+            try {
+                const memUsage = process.memoryUsage();
+                const uptime = Math.floor((Date.now() - startTime) / 1000);
+                const stats = getStats();
+                const users = getAllUsers();
+                
+                res.status(200).json({
+                    status: 'ok',
+                    bot: {
+                        name: 'Tama AI Bot',
+                        version: '2.1.0',
+                        author: 'Tama El Pablo',
+                        contact: {
+                            whatsapp: '082210819939',
+                            instagram: 'tam.aspx'
+                        }
+                    },
+                    server: {
+                        uptime: uptime,
+                        uptimeFormatted: formatUptime(uptime),
+                        memory: {
+                            heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + ' MB',
+                            heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + ' MB',
+                            rss: Math.round(memUsage.rss / 1024 / 1024) + ' MB'
+                        },
+                        pid: process.pid,
+                        nodeVersion: process.version
+                    },
+                    database: {
+                        totalMessages: stats.totalMessages,
+                        activeMessages: stats.activeMessages,
+                        expiredMessages: stats.expiredMessages,
+                        totalChats: stats.totalChats,
+                        activeChats: stats.activeChats,
+                        totalUsers: stats.totalUsers,
+                        sessionExpiryHours: stats.sessionExpiryHours
+                    },
+                    users: users.map(u => ({
+                        phone: u.phoneNumber,
+                        name: u.name,
+                        messageCount: u.messageCount,
+                        lastSeen: new Date(u.lastSeen).toISOString(),
+                        isActive: u.isActive,
+                        isGroup: u.isGroup
+                    })),
+                    timestamp: new Date().toISOString()
+                });
+            } catch (error) {
+                console.error('[Dashboard] Error:', error.message);
+                res.status(500).json({
+                    status: 'error',
+                    message: 'Failed to load dashboard data'
+                });
+            }
+        });
+
+        // Users list endpoint (phone numbers)
+        app.get('/users', (req, res) => {
+            try {
+                const users = getAllUsers();
+                
+                res.status(200).json({
+                    status: 'ok',
+                    count: users.length,
+                    users: users.map(u => ({
+                        phone: u.phoneNumber,
+                        name: u.name,
+                        messageCount: u.messageCount,
+                        firstSeen: new Date(u.firstSeen).toISOString(),
+                        lastSeen: new Date(u.lastSeen).toISOString(),
+                        isActive: u.isActive,
+                        isGroup: u.isGroup
+                    }))
+                });
+            } catch (error) {
+                console.error('[Users] Error:', error.message);
+                res.status(500).json({
+                    status: 'error',
+                    message: 'Failed to load users'
+                });
+            }
+        });
+
+        // Stats endpoint
+        app.get('/stats', (req, res) => {
+            try {
+                const stats = getStats();
+                
+                res.status(200).json({
+                    status: 'ok',
+                    ...stats
+                });
+            } catch (error) {
+                console.error('[Stats] Error:', error.message);
+                res.status(500).json({
+                    status: 'error',
+                    message: 'Failed to load stats'
+                });
+            }
+        });
+
+        // Cleanup endpoint (trigger manual cleanup of expired sessions)
+        app.post('/cleanup', (req, res) => {
+            try {
+                const result = cleanupExpiredSessions();
+                
+                res.status(200).json({
+                    status: 'ok',
+                    message: `Cleaned up ${result.deletedCount} expired messages`,
+                    ...result
+                });
+            } catch (error) {
+                console.error('[Cleanup] Error:', error.message);
+                res.status(500).json({
+                    status: 'error',
+                    message: 'Failed to cleanup'
+                });
+            }
         });
 
         // 404 handler

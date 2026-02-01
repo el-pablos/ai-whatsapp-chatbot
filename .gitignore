@@ -30,4 +30,4 @@ build/
 data/
 *.db
 *.db-*
-data*.txt
+*.txt
