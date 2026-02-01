@@ -41,8 +41,13 @@ const logger = pino({
 let sock = null;
 let isConnecting = false;
 let reconnectAttempts = 0;
+let pairingCodeRequested = false;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_INTERVAL = 5000; // 5 detik
+
+// Auth method configuration
+const AUTH_METHOD = process.env.WA_AUTH_METHOD || 'qr'; // 'qr' atau 'pairing'
+const PHONE_NUMBER = process.env.WA_PHONE_NUMBER || '';
 
 /**
  * Inisialisasi dan connect ke WhatsApp
@@ -54,6 +59,7 @@ const connectToWhatsApp = async () => {
     }
 
     isConnecting = true;
+    pairingCodeRequested = false;
 
     try {
         // Load auth state dari folder
@@ -62,6 +68,7 @@ const connectToWhatsApp = async () => {
         // Fetch versi Baileys terbaru
         const { version } = await fetchLatestBaileysVersion();
         console.log(`[Bot] Using Baileys version: ${version.join('.')}`);
+        console.log(`[Bot] Auth method: ${AUTH_METHOD.toUpperCase()}`);
 
         // Buat socket connection
         sock = makeWASocket({
@@ -81,7 +88,7 @@ const connectToWhatsApp = async () => {
         sock.ev.on('creds.update', saveCreds);
 
         // Handle connection update
-        sock.ev.on('connection.update', handleConnectionUpdate);
+        sock.ev.on('connection.update', (update) => handleConnectionUpdate(update, state));
 
         // Handle incoming messages
         sock.ev.on('messages.upsert', handleMessagesUpsert);
@@ -99,11 +106,44 @@ const connectToWhatsApp = async () => {
  * Handle connection state updates
  * 
  * @param {Object} update - Connection update object
+ * @param {Object} state - Auth state
  */
-const handleConnectionUpdate = async (update) => {
+const handleConnectionUpdate = async (update, state) => {
     const { connection, lastDisconnect, qr } = update;
 
-    if (qr) {
+    // Handle pairing code method
+    if (AUTH_METHOD === 'pairing' && !state.creds.registered && !pairingCodeRequested) {
+        if (PHONE_NUMBER) {
+            pairingCodeRequested = true;
+            console.log('[Bot] Requesting pairing code untuk nomor:', PHONE_NUMBER);
+            console.log('');
+            
+            // Delay sedikit untuk memastikan socket ready
+            setTimeout(async () => {
+                try {
+                    const code = await sock.requestPairingCode(PHONE_NUMBER);
+                    console.log('╔═══════════════════════════════════════════════════════════╗');
+                    console.log('║              📱 PAIRING CODE (Masukkan di WA)             ║');
+                    console.log('╠═══════════════════════════════════════════════════════════╣');
+                    console.log(`║                        ${code}                        ║`);
+                    console.log('╠═══════════════════════════════════════════════════════════╣');
+                    console.log('║  Buka WhatsApp > Linked Devices > Link a Device           ║');
+                    console.log('║  Pilih "Link with phone number instead"                   ║');
+                    console.log('║  Masukkan code di atas                                    ║');
+                    console.log('╚═══════════════════════════════════════════════════════════╝');
+                    console.log('');
+                } catch (err) {
+                    console.error('[Bot] Error requesting pairing code:', err.message);
+                    pairingCodeRequested = false;
+                }
+            }, 3000);
+        } else {
+            console.error('[Bot] WA_PHONE_NUMBER tidak diset! Set di .env untuk pairing method');
+        }
+    }
+
+    // Handle QR code method
+    if (AUTH_METHOD === 'qr' && qr) {
         console.log('[Bot] QR Code received - scan dengan WA kamu ya bro! 📱');
         console.log('');
         qrcode.generate(qr, { small: true });
