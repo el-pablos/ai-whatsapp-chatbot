@@ -22,6 +22,7 @@ const {
     makeCacheableSignalKeyStore
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
+const qrcode = require('qrcode-terminal');
 
 const { fetchCopilotResponse } = require('./aiHandler');
 const { startHealthCheckServer } = require('./healthCheck');
@@ -69,7 +70,6 @@ const connectToWhatsApp = async () => {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, logger)
             },
-            printQRInTerminal: true,
             logger,
             markOnlineOnConnect: true,
             generateHighQualityLinkPreview: false,
@@ -105,6 +105,9 @@ const handleConnectionUpdate = async (update) => {
 
     if (qr) {
         console.log('[Bot] QR Code received - scan dengan WA kamu ya bro! 📱');
+        console.log('');
+        qrcode.generate(qr, { small: true });
+        console.log('');
     }
 
     if (connection === 'close') {
