@@ -24,6 +24,7 @@
 // Load environment variables
 require('dotenv').config();
 
+const crypto = require('crypto');
 const makeWASocket = require('@whiskeysockets/baileys').default;
 const { 
     useMultiFileAuthState, 
@@ -173,16 +174,14 @@ setInterval(() => {
 }, MESSAGE_CACHE_CLEANUP_INTERVAL);
 
 /**
- * Simple hash function for content-based deduplication
+ * Better hash function for content-based deduplication
+ * Uses combination of content + timestamp bucketing untuk avoid collision
  */
-const simpleHash = (str) => {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        const char = str.charCodeAt(i);
-        hash = ((hash << 5) - hash) + char;
-        hash = hash & hash;
-    }
-    return hash.toString(36);
+const generateContentHash = (str) => {
+    // Add timestamp bucket (2 second window) to allow same message after short time
+    const timeBucket = Math.floor(Date.now() / 2000);
+    const hashInput = `${str}:${timeBucket}`;
+    return crypto.createHash('md5').update(hashInput).digest('hex').slice(0, 12);
 };
 
 /**
@@ -536,22 +535,29 @@ const processMessage = async (msg) => {
         return;
     }
     
-    // DEDUPLICATION 2: Skip if same content from same sender in last 5 seconds
+    // DEDUPLICATION 2: Skip if EXACT same content from same sender in last 2 seconds
     // This catches Baileys double-firing the same message
+    // Note: Uses timestamp bucketing so user can send same message again after 2s
     const msgTextContent = msg.message?.conversation || 
                        msg.message?.extendedTextMessage?.text || 
                        msg.message?.imageMessage?.caption ||
                        msg.message?.documentMessage?.fileName || '';
-    const contentHash = simpleHash(`${sender}:${msgTextContent}`);
     
-    if (recentMessageHashes.has(contentHash)) {
-        console.log(`[Bot] Skipping duplicate content hash: ${contentHash}`);
-        return;
+    // Only dedup if there's actual text content
+    if (msgTextContent && msgTextContent.length > 0) {
+        const contentHash = generateContentHash(`${sender}:${msgTextContent}`);
+        
+        if (recentMessageHashes.has(contentHash)) {
+            console.log(`[Bot] Skipping duplicate content (within 2s window): ${msgTextContent.slice(0, 30)}...`);
+            return;
+        }
+        
+        // Mark this content as seen
+        recentMessageHashes.set(contentHash, Date.now());
     }
     
-    // Mark this message as processed (both by ID and content hash)
+    // Mark message ID as processed
     processedMessages.set(messageId, Date.now());
-    recentMessageHashes.set(contentHash, Date.now());
 
     // Extract quoted message info (for reply detection)
     const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
