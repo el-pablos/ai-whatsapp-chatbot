@@ -67,6 +67,18 @@ const {
     parseDateFromString,
     getTodayInfo
 } = require('./calendarHandler');
+const {
+    analyzeMood,
+    generateMoodResponse,
+    isMoodRequest
+} = require('./moodHandler');
+const {
+    performReading,
+    yesNoReading,
+    isTarotRequest,
+    isYesNoQuestion,
+    getSpreadFromMessage
+} = require('./tarotHandler');
 
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
@@ -366,6 +378,18 @@ const processMessage = async (msg) => {
         }
     }
 
+    // Check for tarot request
+    if (isTarotRequest(textContent)) {
+        await handleTarotRequest(msg, sender, textContent);
+        return;
+    }
+
+    // Check for mood reading request
+    if (isMoodRequest(textContent)) {
+        await handleMoodRequest(msg, sender, textContent);
+        return;
+    }
+
     // Save user message to database
     saveMessage({
         chatId: sender,
@@ -444,7 +468,7 @@ const handleSpecialCommands = async (msg, sender, text) => {
     // Command: /help
     if (lowerText === '/help' || lowerText === '/bantuan') {
         await sock.sendMessage(sender, {
-            text: `🤖 *Tama Bot v2.1*\n\nFitur:\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w bisa analisis\n• Kirim lokasi - w tau dimana lu\n• Minta lokasi tempat - "kirim lokasi starbucks"\n• Reply chat - w paham konteks nya\n• Cek tanggal/kalender - "tanggal hari ini"\n\nCommands:\n• /clear - hapus history chat\n• /stats - lihat statistik\n• /kalender - lihat kalender bulan ini\n• /libur - cek libur nasional\n• /zodiak [tgl] - cek zodiak\n• /tebaksuku - kirim foto muka, w tebak suku nya (fun)\n• /help - bantuan ini\n\neuy tinggal chat aja santai 😎`
+            text: `🤖 *Tama Bot v2.2*\n\n*Fitur Utama:*\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w bisa analisis/deskripsiin\n• Kirim lokasi - w tau dimana lu\n• Reply chat - w paham konteks nya\n\n*Fitur Spesial:*\n🔮 /tarot - baca kartu tarot\n🎴 /tarotyn [pertanyaan] - ya/tidak\n😊 /bacamood [curhat] - baca mood lo\n📸 /tebaksuku - tebak suku dari foto\n📅 /kalender - kalender bulan ini\n📆 /libur - libur nasional\n♈ /zodiak [tgl] - cek zodiak\n🎂 /ultah [tgl] - info ulang tahun\n\n*Commands Lain:*\n• /clear - hapus history chat\n• /stats - lihat statistik\n• /help - bantuan ini\n\n💡 *Tips:* Chat aja natural, misal:\n• "tarot dong, karir w gimana?"\n• "curhat dong, w lagi sedih"\n• "kirim lokasi starbucks terdekat"\n\neuy santai aja chatnya 😎`
         }, { quoted: msg });
         return true;
     }
@@ -524,6 +548,77 @@ const handleSpecialCommands = async (msg, sender, text) => {
         // Set flag untuk next image
         return true;
     }
+
+    // Command: /tarot - tarot reading menu
+    if (lowerText === '/tarot' || lowerText === '/tarot help') {
+        await sock.sendMessage(sender, {
+            text: `🔮 *TAROT MENU*\n━━━━━━━━━━━━━━━━━━━━━\n\n📜 *Spread yang tersedia:*\n\n1️⃣ *Satu Kartu*\n   /tarot1 [pertanyaan]\n   Insight cepat untuk pertanyaan\n\n2️⃣ *Tiga Kartu*\n   /tarot3 [pertanyaan]\n   Past - Present - Future\n\n3️⃣ *Love Spread*\n   /tarotlove [pertanyaan]\n   Khusus pertanyaan cinta\n\n4️⃣ *Yes/No*\n   /tarotyn [pertanyaan]\n   Jawaban Ya atau Tidak\n\n5️⃣ *Celtic Cross (10 kartu)*\n   /tarotfull [pertanyaan]\n   Reading lengkap & mendalam\n\n━━━━━━━━━━━━━━━━━━━━━\n💡 Contoh: /tarot1 apakah w bakal sukses?\n\natau langsung aja ketik "tarot" + pertanyaan mu`
+        }, { quoted: msg });
+        return true;
+    }
+
+    // Command: /tarot1 - single card
+    if (lowerText.startsWith('/tarot1')) {
+        const question = text.slice(7).trim() || 'Insight untuk hari ini';
+        await handleTarotRequest(msg, sender, question, 'single');
+        return true;
+    }
+
+    // Command: /tarot3 - three card spread
+    if (lowerText.startsWith('/tarot3')) {
+        const question = text.slice(7).trim() || 'Past-Present-Future untuk saya';
+        await handleTarotRequest(msg, sender, question, 'threeCard');
+        return true;
+    }
+
+    // Command: /tarotlove - love spread
+    if (lowerText.startsWith('/tarotlove') || lowerText.startsWith('/tarotcinta')) {
+        const question = text.slice(10).trim() || 'Bagaimana hubungan cinta saya?';
+        await handleTarotRequest(msg, sender, question, 'loveSpread');
+        return true;
+    }
+
+    // Command: /tarotyn - yes/no
+    if (lowerText.startsWith('/tarotyn')) {
+        const question = text.slice(8).trim();
+        if (!question) {
+            await sock.sendMessage(sender, {
+                text: 'kasih pertanyaan nya dong bro\ncontoh: /tarotyn apakah dia suka sama w?'
+            }, { quoted: msg });
+            return true;
+        }
+        await handleYesNoTarot(msg, sender, question);
+        return true;
+    }
+
+    // Command: /tarotfull - celtic cross
+    if (lowerText.startsWith('/tarotfull')) {
+        const question = text.slice(10).trim() || 'Reading lengkap untuk saya';
+        await handleTarotRequest(msg, sender, question, 'celticCross');
+        return true;
+    }
+
+    // Command: /mood - mood reading
+    if (lowerText === '/mood' || lowerText === '/mood help') {
+        await sock.sendMessage(sender, {
+            text: `🔮 *MOOD READING*\n━━━━━━━━━━━━━━━━━━━━━\n\nW bisa baca mood/perasaan lo dari cerita yang lo jabarin.\n\n*Cara pakai:*\n/bacamood [ceritain perasaan lo]\n\natau langsung cerita aja dengan kata "lagi ngerasa..." atau "curhat dong..."\n\n*Contoh:*\n• /bacamood lagi bingung sama kerjaan\n• curhat dong, w lagi sedih karena putus\n• w lagi ngerasa stressed bgt\n\n━━━━━━━━━━━━━━━━━━━━━\n💭 Cerita aja, w dengerin kok bro`
+        }, { quoted: msg });
+        return true;
+    }
+
+    // Command: /bacamood - mood reading
+    if (lowerText.startsWith('/bacamood') || lowerText.startsWith('/readmood')) {
+        const description = text.slice(9).trim();
+        if (!description) {
+            await sock.sendMessage(sender, {
+                text: 'ceritain dulu perasaan lo gimana bro\ncontoh: /bacamood lagi sedih karena kerjaan ga beres'
+            }, { quoted: msg });
+            return true;
+        }
+        await handleMoodRequest(msg, sender, description);
+        return true;
+    }
+
 
     return false;
 };
@@ -708,6 +803,125 @@ const handleUserLocation = async (msg, sender, pushName, locationMsg) => {
         console.error('[Bot] Error handling location:', error.message);
         await sock.sendMessage(sender, {
             text: 'nice, w liat lokasi lu 📍'
+        }, { quoted: msg });
+    }
+
+    await sock.sendPresenceUpdate('paused', sender);
+};
+
+/**
+ * Handle tarot reading request
+ */
+const handleTarotRequest = async (msg, sender, text, spreadType = null) => {
+    console.log(`[Bot] Tarot request: ${text}`);
+    
+    await sock.sendPresenceUpdate('composing', sender);
+
+    try {
+        // Determine spread type from message if not provided
+        const spread = spreadType || getSpreadFromMessage(text);
+        
+        // Extract question (remove tarot keywords)
+        let question = text
+            .replace(/tarot|kartu|baca|main|ramal|ramalan/gi, '')
+            .trim() || 'Apa pesan untuk saya hari ini?';
+
+        // Get conversation history for context
+        const history = getConversationHistory(sender);
+        
+        // Perform the reading
+        const result = await performReading(spread, question, history);
+        
+        // Send response
+        await sock.sendMessage(sender, { text: result.reading }, { quoted: msg });
+        
+        // Save to database
+        saveMessage({
+            chatId: sender,
+            senderJid: 'bot',
+            senderName: 'Tama',
+            role: 'assistant',
+            content: result.reading,
+            messageId: `bot_${Date.now()}`
+        });
+
+    } catch (error) {
+        console.error('[Bot] Error with tarot reading:', error.message);
+        await sock.sendMessage(sender, {
+            text: 'duh error pas baca tarot 😓 coba lgi ya bro'
+        }, { quoted: msg });
+    }
+
+    await sock.sendPresenceUpdate('paused', sender);
+};
+
+/**
+ * Handle Yes/No tarot reading
+ */
+const handleYesNoTarot = async (msg, sender, question) => {
+    console.log(`[Bot] Tarot Yes/No: ${question}`);
+    
+    await sock.sendPresenceUpdate('composing', sender);
+
+    try {
+        const result = yesNoReading(question);
+        
+        await sock.sendMessage(sender, { text: result.text }, { quoted: msg });
+        
+        // Save to database
+        saveMessage({
+            chatId: sender,
+            senderJid: 'bot',
+            senderName: 'Tama',
+            role: 'assistant',
+            content: result.text,
+            messageId: `bot_${Date.now()}`
+        });
+
+    } catch (error) {
+        console.error('[Bot] Error with yes/no tarot:', error.message);
+        await sock.sendMessage(sender, {
+            text: 'duh error pas baca kartunya 😓'
+        }, { quoted: msg });
+    }
+
+    await sock.sendPresenceUpdate('paused', sender);
+};
+
+/**
+ * Handle mood reading request
+ */
+const handleMoodRequest = async (msg, sender, description) => {
+    console.log(`[Bot] Mood reading request`);
+    
+    await sock.sendPresenceUpdate('composing', sender);
+
+    try {
+        // Get conversation history for better context
+        const history = getConversationHistory(sender);
+        
+        // Analyze mood
+        const moodAnalysis = await analyzeMood(description, history);
+        
+        // Generate response
+        const moodResponse = generateMoodResponse(moodAnalysis);
+        
+        await sock.sendMessage(sender, { text: moodResponse }, { quoted: msg });
+        
+        // Save to database
+        saveMessage({
+            chatId: sender,
+            senderJid: 'bot',
+            senderName: 'Tama',
+            role: 'assistant',
+            content: moodResponse,
+            messageId: `bot_${Date.now()}`
+        });
+
+    } catch (error) {
+        console.error('[Bot] Error with mood reading:', error.message);
+        await sock.sendMessage(sender, {
+            text: 'duh error pas baca mood nya 😓 coba ceritain lagi bro'
         }, { quoted: msg });
     }
 

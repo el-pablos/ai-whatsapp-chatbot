@@ -277,16 +277,17 @@ Berikan tebakan dalam gaya casual Tama dengan format:
 Ingat ini cuma for fun ya! Jangan terlalu serius, bisa bercanda dikit tapi tetap respectful.
 Kalau ga ada wajah di foto, bilang aja "eh ini ga ada muka nya bro 😭"`;
 
+        // OpenAI-compatible format dengan image_url (data URL)
+        const imageDataUrl = `data:${mimetype};base64,${base64Image}`;
+
         const messages = [
             {
                 role: 'user',
                 content: [
                     {
-                        type: 'image',
-                        source: {
-                            type: 'base64',
-                            media_type: mimetype,
-                            data: base64Image
+                        type: 'image_url',
+                        image_url: {
+                            url: imageDataUrl
                         }
                     },
                     {

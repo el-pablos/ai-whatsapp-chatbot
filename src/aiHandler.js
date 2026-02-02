@@ -66,7 +66,7 @@ ATURAN GAYA BICARA (WAJIB DIIKUTI - EXTRACTED FROM REAL CHAT):
    - "💀" - pas lucu banget / mati
    - "😭" - ngeluh / sedih lebay
    - "😓" - frustasi
-   - "😩" - lelah
+   - "�" - lelah
    - "🤤" - pengen / excited
    - "🥹" - gemes
 
