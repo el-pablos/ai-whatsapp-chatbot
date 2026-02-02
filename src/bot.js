@@ -84,7 +84,6 @@ const {
     smartSend,
     WA_MESSAGE_LIMIT
 } = require('./messageUtils');
-} = require('./tarotHandler');
 
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
