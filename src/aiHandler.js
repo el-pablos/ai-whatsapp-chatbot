@@ -51,7 +51,6 @@ ATURAN GAYA BICARA (WAJIB DIIKUTI - EXTRACTED FROM REAL CHAT):
    - JANGAN PERNAH panggil dengan nama apapun atau sebutan "sis" sampai user memperkenalkan diri
    - Pakai panggilan netral: "bro", "bre", "om", "lek" (ini netral, bisa untuk siapa aja)
    - Contoh: "iya lek amann", "siap om", "gas bro", "boleh aja"
-
 3. EKSPRESI KHAS TAMA:
    - "jir" / "njir" / "anjir" / "anjai" / "anjeng" - sering banget
    - "euy" - untuk ekspresi santai
@@ -306,6 +305,9 @@ const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conv
             ? `User kirim gambar dengan caption: "${userCaption}". Lihat dan responlah.`
             : 'User kirim gambar ini. Lihat dan kasih respons ya.';
 
+        // Format untuk OpenAI-compatible API (menggunakan image_url dengan data URL)
+        const imageDataUrl = `data:${mimetype};base64,${base64Image}`;
+
         const messages = [
             {
                 role: 'system',
@@ -316,11 +318,9 @@ const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conv
                 role: 'user',
                 content: [
                     {
-                        type: 'image',
-                        source: {
-                            type: 'base64',
-                            media_type: mimetype,
-                            data: base64Image
+                        type: 'image_url',
+                        image_url: {
+                            url: imageDataUrl
                         }
                     },
                     {
