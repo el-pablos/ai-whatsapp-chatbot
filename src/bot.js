@@ -650,7 +650,7 @@ const processMessage = async (msg) => {
         // Detect search requests like "cari di internet", "search", etc.
         // ═══════════════════════════════════════════════════════════
         const searchRequest = detectSearchRequest(textContent);
-        if (searchRequest.isSearchRequest) {
+        if (searchRequest && searchRequest.isSearch) {
             console.log(`[Bot] Web search request detected: "${searchRequest.query}"`);
             
             await sock.sendMessage(sender, {
