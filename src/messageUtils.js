@@ -133,6 +133,8 @@ const findBestSplitPoint = (text, maxLength) => {
 const sendChunkedMessages = async (sock, recipient, messages, options = {}) => {
     const { quoted, delay = MESSAGE_DELAY } = options;
 
+    console.log(`[MessageUtils] Sending ${messages.length} chunk(s) to ${recipient}`);
+
     for (let i = 0; i < messages.length; i++) {
         const message = messages[i];
         
@@ -145,7 +147,14 @@ const sendChunkedMessages = async (sock, recipient, messages, options = {}) => {
         // Only quote the first message
         const msgOptions = i === 0 && quoted ? { quoted } : {};
         
-        await sock.sendMessage(recipient, { text: textToSend }, msgOptions);
+        try {
+            console.log(`[MessageUtils] Sending chunk ${i + 1}/${messages.length} (${textToSend.length} chars)`);
+            const result = await sock.sendMessage(recipient, { text: textToSend }, msgOptions);
+            console.log(`[MessageUtils] Chunk ${i + 1} sent successfully, msgId: ${result?.key?.id || 'unknown'}`);
+        } catch (sendError) {
+            console.error(`[MessageUtils] FAILED to send chunk ${i + 1}:`, sendError.message);
+            throw sendError; // Re-throw so caller knows
+        }
 
         // Delay between messages (except after last)
         if (i < messages.length - 1) {
