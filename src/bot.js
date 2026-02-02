@@ -38,7 +38,7 @@ const fs = require('fs');
 const path = require('path');
 
 // Import modules
-const { fetchCopilotResponse, fetchVisionResponse, getSystemPrompt } = require('./aiHandler');
+const { fetchCopilotResponse, fetchVisionResponse, getSystemPrompt, checkDimensiLainLogic } = require('./aiHandler');
 const { startHealthCheckServer } = require('./healthCheck');
 const { syncDNSRecord } = require('./dnsUpdater');
 const { 
@@ -102,6 +102,29 @@ const {
     parseFormatResponse,
     cleanupFile
 } = require('./youtubeHandler');
+const {
+    scheduleBackup,
+    runBackupNow,
+    stopBackup
+} = require('./backupHandler');
+const {
+    transcribeAudio,
+    isVoiceNote,
+    isAudioMessage,
+    getAudioBuffer,
+    getAudioFormat
+} = require('./voiceHandler');
+const {
+    isStickerRequest,
+    imageToSticker,
+    videoToSticker,
+    sendSticker
+} = require('./stickerHandler');
+const {
+    detectSearchRequest,
+    webSearch,
+    formatSearchResult
+} = require('./webSearchHandler');
 
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
@@ -386,6 +409,14 @@ const handleConnectionUpdate = async (update, state) => {
         } else {
             console.log('[Bot] ✅ Connected to WhatsApp successfully! Siap nerima pesan jir 🚀');
         }
+        
+        // Initialize auto backup scheduler
+        try {
+            scheduleBackup(sock);
+            console.log('[Bot] ✅ Auto backup scheduled (daily at 00:00 WIB)');
+        } catch (backupErr) {
+            console.error('[Bot] Failed to schedule backup:', backupErr.message);
+        }
     }
 };
 
@@ -459,6 +490,14 @@ const processMessage = async (msg) => {
     const locationMsg = msg.message?.locationMessage;
     if (locationMsg) {
         await handleUserLocation(msg, sender, pushName, locationMsg);
+        return;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // VOICE NOTE HANDLER - Speech to Text
+    // ═══════════════════════════════════════════════════════════
+    if (isVoiceNote(msg) || isAudioMessage(msg)) {
+        await handleVoiceMessage(msg, sender, pushName, messageId);
         return;
     }
 
@@ -583,6 +622,79 @@ const processMessage = async (msg) => {
     await sock.sendPresenceUpdate('composing', sender);
 
     try {
+        // ═══════════════════════════════════════════════════════════
+        // TEMPORAL LOGIC CHECK: "Dimensi Lain" (3-7 Feb 2026)
+        // Jika user tanya tentang author/owner dalam periode ini,
+        // bypass AI dan kirim respons hardcoded
+        // ═══════════════════════════════════════════════════════════
+        const dimensiLainResponse = checkDimensiLainLogic(textContent);
+        if (dimensiLainResponse) {
+            console.log(`[Bot] Temporal response (Dimensi Lain) untuk ${pushName}`);
+            
+            saveMessage({
+                chatId: sender,
+                senderJid: 'bot',
+                senderName: 'Tama',
+                role: 'assistant',
+                content: dimensiLainResponse,
+                messageId: `bot_${Date.now()}`
+            });
+            
+            await smartSend(sock, sender, dimensiLainResponse, { quoted: msg });
+            await sock.sendPresenceUpdate('paused', sender);
+            return;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // WEB SEARCH CHECK: DuckDuckGo search for real-time info
+        // Detect search requests like "cari di internet", "search", etc.
+        // ═══════════════════════════════════════════════════════════
+        const searchRequest = detectSearchRequest(textContent);
+        if (searchRequest.isSearchRequest) {
+            console.log(`[Bot] Web search request detected: "${searchRequest.query}"`);
+            
+            await sock.sendMessage(sender, {
+                text: '🔍 bentar ya w cariin dulu di internet...'
+            });
+            
+            const searchResult = await webSearch(searchRequest.query);
+            
+            if (searchResult.success && searchResult.results.length > 0) {
+                // Format search results
+                const formattedResults = formatSearchResult(searchResult);
+                
+                // Get AI summary of search results
+                const history = getConversationHistory(sender);
+                const searchContext = `User mencari info tentang: "${searchRequest.query}"\n\nHasil pencarian:\n${formattedResults}`;
+                
+                const aiResponse = await fetchCopilotResponse(
+                    `berdasarkan hasil pencarian ini, kasih rangkuman yang informatif dan helpful untuk user:\n\n${searchContext}`,
+                    history,
+                    { searchResults: searchResult.results }
+                );
+                
+                saveMessage({
+                    chatId: sender,
+                    senderJid: 'bot',
+                    senderName: 'Tama',
+                    role: 'assistant',
+                    content: aiResponse,
+                    messageId: `bot_${Date.now()}`
+                });
+                
+                await smartSend(sock, sender, aiResponse, { quoted: msg });
+                await sock.sendPresenceUpdate('paused', sender);
+                return;
+            } else {
+                // No results, tell user
+                await sock.sendMessage(sender, {
+                    text: `ga nemu apa2 bro soal "${searchRequest.query}" 😅 coba kata kunci lain deh`
+                }, { quoted: msg });
+                await sock.sendPresenceUpdate('paused', sender);
+                return;
+            }
+        }
+
         // Get conversation history from database
         const history = getConversationHistory(sender);
         
@@ -645,7 +757,7 @@ const handleSpecialCommands = async (msg, sender, text) => {
     // Command: /help
     if (lowerText === '/help' || lowerText === '/bantuan') {
         await sock.sendMessage(sender, {
-            text: `🤖 *Tama Bot v2.2*\n\n*Fitur Utama:*\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w bisa analisis/deskripsiin\n• Kirim lokasi - w tau dimana lu\n• Reply chat - w paham konteks nya\n\n*Fitur Spesial:*\n🔮 /tarot - baca kartu tarot\n🎴 /tarotyn [pertanyaan] - ya/tidak\n😊 /bacamood [curhat] - baca mood lo\n📸 /tebaksuku - tebak suku dari foto\n📅 /kalender - kalender bulan ini\n📆 /libur - libur nasional\n♈ /zodiak [tgl] - cek zodiak\n🎂 /ultah [tgl] - info ulang tahun\n\n*Commands Lain:*\n• /clear - hapus history chat\n• /stats - lihat statistik\n• /help - bantuan ini\n\n💡 *Tips:* Chat aja natural, misal:\n• "tarot dong, karir w gimana?"\n• "curhat dong, w lagi sedih"\n• "kirim lokasi starbucks terdekat"\n\neuy santai aja chatnya 😎`
+            text: `🤖 *Tama AI v2.3*\n\n*Fitur Chat:*\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w analisis/deskripsiin\n• Kirim voice note - w transcribe & jawab\n• Kirim lokasi - w tau dimana lu\n• Reply chat - w paham konteks nya\n\n*Media Features:*\n🎨 /sticker - bikin stiker dari gambar/video\n📸 /tebaksuku - tebak suku dari foto\n\n*Entertainment:*\n🔮 /tarot - baca kartu tarot\n🎴 /tarotyn [pertanyaan] - ya/tidak\n😊 /bacamood [curhat] - baca mood lo\n🎵 kirim link youtube - download MP3/MP4\n\n*Utility:*\n🔍 /search [query] - cari di internet\n📅 /kalender - kalender bulan ini\n📆 /libur - libur nasional\n♈ /zodiak [tgl] - cek zodiak\n🎂 /ultah [tgl] - info ulang tahun\n\n*Commands Lain:*\n• /clear - hapus history chat\n• /stats - lihat statistik\n• /help - bantuan ini\n\n💡 Chat aja natural, w ngerti kok bro 😎`
         }, { quoted: msg });
         return true;
     }
@@ -796,8 +908,161 @@ const handleSpecialCommands = async (msg, sender, text) => {
         return true;
     }
 
+    // Command: /search - web search
+    if (lowerText.startsWith('/search') || lowerText.startsWith('/cari')) {
+        const query = text.replace(/^\/(search|cari)\s*/i, '').trim();
+        if (!query) {
+            await sock.sendMessage(sender, {
+                text: 'kasih keyword nya dong bro\ncontoh: /search cara masak nasi goreng'
+            }, { quoted: msg });
+            return true;
+        }
+        
+        await sock.sendMessage(sender, {
+            text: '🔍 bentar ya w cariin dulu...'
+        });
+        
+        const searchResult = await webSearch(query);
+        
+        if (searchResult.success && searchResult.results.length > 0) {
+            const formattedResults = formatSearchResult(searchResult);
+            const history = getConversationHistory(sender);
+            
+            const aiResponse = await fetchCopilotResponse(
+                `berdasarkan hasil pencarian ini, kasih rangkuman yang informatif:\n\nQuery: "${query}"\n\nHasil:\n${formattedResults}`,
+                history,
+                { searchResults: searchResult.results }
+            );
+            
+            await smartSend(sock, sender, aiResponse, { quoted: msg });
+        } else {
+            await sock.sendMessage(sender, {
+                text: `ga nemu apa2 soal "${query}" 😅 coba kata kunci lain`
+            }, { quoted: msg });
+        }
+        return true;
+    }
 
-    return false;
+    // Command: /backup - manual backup (admin only)
+    if (lowerText === '/backup') {
+        const OWNER_NUMBER = process.env.OWNER_NUMBER || '6281234567890';
+        const senderNumber = sender.split('@')[0];
+        
+        if (senderNumber === OWNER_NUMBER) {
+            await sock.sendMessage(sender, {
+                text: '📦 oke bentar ya w backup session sekarang...'
+            });
+            
+            try {
+                await runBackupNow(sock);
+                await sock.sendMessage(sender, {
+                    text: '✅ backup berhasil! file nya udah w kirim'
+                });
+            } catch (err) {
+                await sock.sendMessage(sender, {
+                    text: `❌ gagal backup: ${err.message}`
+                }, { quoted: msg });
+            }
+        } else {
+            await sock.sendMessage(sender, {
+                text: 'sori bro, command ini cuma buat owner 😅'
+            }, { quoted: msg });
+        }
+        return true;
+    }
+
+    // Command: /sticker - help for sticker
+    if (lowerText === '/sticker' || lowerText === '/stiker') {
+        await sock.sendMessage(sender, {
+            text: `🎨 *STICKER MAKER*\n━━━━━━━━━━━━━━━━━━━━━\n\nKirim gambar/video dengan caption:\n• "sticker"\n• "stiker"\n• "jadiin sticker"\n• "bikin stiker"\n\n*Contoh:*\nKirim gambar + caption "sticker"\n\n*Supported:*\n📷 Image (JPG, PNG, WEBP)\n🎬 Video (max 10 detik, jadi animated)\n\n━━━━━━━━━━━━━━━━━━━━━\n💡 Kirim media aja + caption "sticker"`
+        }, { quoted: msg });
+        return true;
+    }
+
+
+    return false;;
+};
+
+/**
+ * ═══════════════════════════════════════════════════════════
+ * Handle Voice Note / Audio messages (Speech-to-Text)
+ * ═══════════════════════════════════════════════════════════
+ */
+const handleVoiceMessage = async (msg, sender, pushName, messageId) => {
+    console.log(`[Bot] Voice message dari ${pushName}`);
+    
+    await sock.sendPresenceUpdate('composing', sender);
+    
+    try {
+        // Download audio
+        const audioBuffer = await downloadMediaMessage(
+            msg,
+            'buffer',
+            {},
+            { logger: console, reuploadRequest: sock.updateMediaMessage }
+        );
+        
+        const audioFormat = getAudioFormat(msg);
+        console.log(`[Bot] Processing voice note, format: ${audioFormat}`);
+        
+        // Send "processing" message
+        await sock.sendMessage(sender, {
+            text: '🎤 bentar ya w dengerin dulu voice nya...'
+        });
+        
+        // Transcribe audio
+        const transcription = await transcribeAudio(audioBuffer, audioFormat);
+        
+        if (!transcription.success) {
+            await sock.sendMessage(sender, {
+                text: 'duh gabisa denger voice nya bro 😓 coba ketik aja ya'
+            }, { quoted: msg });
+            return;
+        }
+        
+        const transcribedText = transcription.text;
+        console.log(`[Bot] Transcribed: "${transcribedText.substring(0, 50)}..."`);
+        
+        // Save transcription to database
+        saveMessage({
+            chatId: sender,
+            senderJid: sender,
+            senderName: pushName,
+            role: 'user',
+            content: `[Voice Note] ${transcribedText}`,
+            messageId: messageId
+        });
+        
+        // Send transcription confirmation
+        await sock.sendMessage(sender, {
+            text: `📝 *w denger:* "${transcribedText}"\n\n_bentar ya w respon..._`
+        });
+        
+        // Get AI response for the transcribed text
+        const history = getConversationHistory(sender);
+        const aiResponse = await fetchCopilotResponse(transcribedText, history);
+        
+        // Save response
+        saveMessage({
+            chatId: sender,
+            senderJid: 'bot',
+            senderName: 'Tama',
+            role: 'assistant',
+            content: aiResponse,
+            messageId: `bot_${Date.now()}`
+        });
+        
+        // Send response
+        await smartSend(sock, sender, aiResponse, { quoted: msg });
+        
+    } catch (error) {
+        console.error('[Bot] Error processing voice:', error.message);
+        await sock.sendMessage(sender, {
+            text: 'duh error pas proses voice nya 😓 coba ketik aja ya bro'
+        }, { quoted: msg });
+    }
+    
+    await sock.sendPresenceUpdate('paused', sender);
 };
 
 /**
@@ -840,9 +1105,42 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
 
         let aiResponse;
 
-        // Check if user wants ethnicity detection
+        // Check if user wants to make sticker
         const lowerCaption = (caption || '').toLowerCase();
-        if (mediaType === 'image' && (lowerCaption.includes('tebak suku') || lowerCaption.includes('suku apa'))) {
+        if ((mediaType === 'image' || mediaType === 'video') && isStickerRequest(caption)) {
+            console.log(`[Bot] Creating sticker from ${mediaType}`);
+            try {
+                let stickerBuffer;
+                if (mediaType === 'image') {
+                    stickerBuffer = await imageToSticker(buffer, mimetype);
+                } else {
+                    stickerBuffer = await videoToSticker(buffer, mimetype);
+                }
+                
+                await sendSticker(sock, sender, stickerBuffer, { quoted: msg });
+                
+                saveMessage({
+                    chatId: sender,
+                    senderJid: 'bot',
+                    senderName: 'Tama',
+                    role: 'assistant',
+                    content: '[Sent Sticker]',
+                    messageId: `bot_${Date.now()}`
+                });
+                
+                await sock.sendPresenceUpdate('paused', sender);
+                return;
+            } catch (stickerError) {
+                console.error('[Bot] Sticker creation error:', stickerError.message);
+                await sock.sendMessage(sender, {
+                    text: 'duh gagal bikin stiker nya 😓 mungkin file nya kegedean atau format nya ga support'
+                }, { quoted: msg });
+                await sock.sendPresenceUpdate('paused', sender);
+                return;
+            }
+        }
+        // Check if user wants ethnicity detection
+        else if (mediaType === 'image' && (lowerCaption.includes('tebak suku') || lowerCaption.includes('suku apa'))) {
             aiResponse = await detectEthnicity(buffer, mimetype);
         }
         // Handle image with vision
@@ -1241,10 +1539,19 @@ const handleYoutubeDownload = async (msg, sender, videoId, format) => {
 
         // Send the file
         if (format === 'mp3') {
+            // ═══════════════════════════════════════════════════════════
+            // PENTING: MP3 dikirim sebagai DOCUMENT bukan audio
+            // Agar user bisa save file ke device, bukan cuma play di chat
+            // ═══════════════════════════════════════════════════════════
+            const sanitizedTitle = (stored.title || videoId)
+                .replace(/[<>:"/\\|?*]/g, '_')  // Remove invalid chars
+                .substring(0, 100);  // Limit length
+            
             await sock.sendMessage(sender, {
-                audio: fileBuffer,
+                document: fileBuffer,
                 mimetype: 'audio/mpeg',
-                fileName: `${stored.title || videoId}.mp3`
+                fileName: `${sanitizedTitle}.mp3`,
+                caption: `🎵 *${stored.title || 'Audio'}*\n\n_File MP3 - tap untuk save ke device_`
             }, { quoted: msg });
         } else {
             await sock.sendMessage(sender, {
