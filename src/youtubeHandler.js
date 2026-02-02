@@ -19,7 +19,7 @@ const { promisify } = require('util');
 const execAsync = promisify(exec);
 
 // Constants
-const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141/v1/chat/completions';
+const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141';
 const COPILOT_API_MODEL = process.env.COPILOT_API_MODEL || 'claude-sonnet-4.5';
 const DOWNLOAD_DIR = path.join(process.cwd(), 'downloads');
 const MAX_DURATION = 30 * 60; // 30 minutes max
@@ -140,7 +140,7 @@ Pake emoji biar seru! 🎬✨`;
 - Upload: ${videoInfo.uploadDate || 'N/A'}
 - Deskripsi: ${videoInfo.description || 'Tidak ada deskripsi'}`;
 
-        const response = await axios.post(COPILOT_API_URL, {
+        const response = await axios.post(`${COPILOT_API_URL}/v1/chat/completions`, {
             model: COPILOT_API_MODEL,
             messages: [
                 { role: 'system', content: systemPrompt },

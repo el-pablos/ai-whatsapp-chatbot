@@ -327,9 +327,28 @@ const handleConnectionUpdate = async (update, state) => {
             console.log('[Bot] Bukan logout, attempting reconnect...');
             scheduleReconnect();
         } else {
-            console.log('[Bot] Logged out dari WA, hapus folder auth_info_baileys untuk scan ulang');
+            // Status 401 = logged out, need to re-authenticate
+            console.log('[Bot] Logged out dari WA (401), cleaning up auth and requesting new pairing...');
             isAuthenticated = false;
             reconnectAttempts = 0;
+            pairingCodeRequested = false;
+            
+            // Auto cleanup and reconnect with new pairing
+            try {
+                // Delete auth folder
+                if (fs.existsSync(AUTH_FOLDER)) {
+                    fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
+                    console.log('[Bot] Auth folder cleaned up');
+                }
+                
+                // Wait a bit then reconnect to get new pairing code
+                setTimeout(() => {
+                    console.log('[Bot] Requesting new authentication...');
+                    connectToWhatsApp();
+                }, 3000);
+            } catch (err) {
+                console.error('[Bot] Error cleaning up auth:', err.message);
+            }
         }
     }
 

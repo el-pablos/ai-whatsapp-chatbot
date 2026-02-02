@@ -26,7 +26,7 @@ const AdmZip = require('adm-zip');
 const execAsync = promisify(exec);
 
 // Constants
-const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141/v1/chat/completions';
+const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141';
 const COPILOT_API_MODEL = process.env.COPILOT_API_MODEL || 'claude-sonnet-4.5';
 const TEMP_DIR = path.join(process.cwd(), 'temp_docs');
 
@@ -652,7 +652,7 @@ RULES:
                 { role: 'user', content: userMessage }
             ];
 
-            const response = await axios.post(COPILOT_API_URL, {
+            const response = await axios.post(`${COPILOT_API_URL}/v1/chat/completions`, {
                 model: COPILOT_API_MODEL,
                 messages,
                 max_tokens: 4000,
