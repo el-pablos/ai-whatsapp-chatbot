@@ -347,7 +347,21 @@ const processMessage = async (msg) => {
         return;
     }
 
+    // Check for mood reading request FIRST (higher priority than calendar)
+    // Because messages like "hari ini w ngerasa berat" should trigger mood, not calendar
+    if (isMoodRequest(textContent)) {
+        await handleMoodRequest(msg, sender, textContent);
+        return;
+    }
+
+    // Check for tarot request
+    if (isTarotRequest(textContent)) {
+        await handleTarotRequest(msg, sender, textContent);
+        return;
+    }
+
     // Check for calendar-related queries (natural language)
+    // This is checked AFTER mood/tarot to avoid false positives
     const calendarIntent = detectCalendarIntent(textContent);
     if (calendarIntent) {
         let calendarResponse = null;
@@ -376,18 +390,6 @@ const processMessage = async (msg) => {
             await sock.sendMessage(sender, { text: calendarResponse }, { quoted: msg });
             return;
         }
-    }
-
-    // Check for tarot request
-    if (isTarotRequest(textContent)) {
-        await handleTarotRequest(msg, sender, textContent);
-        return;
-    }
-
-    // Check for mood reading request
-    if (isMoodRequest(textContent)) {
-        await handleMoodRequest(msg, sender, textContent);
-        return;
     }
 
     // Save user message to database

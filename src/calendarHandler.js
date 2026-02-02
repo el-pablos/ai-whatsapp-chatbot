@@ -414,8 +414,29 @@ const getMonthCalendar = (month = null, year = null) => {
 const detectCalendarIntent = (message) => {
     const msg = message.toLowerCase();
     
-    // Intent: Hari ini / Tanggal sekarang
-    if (/(hari ini|tanggal (ber)?apa|sekarang tanggal|tgl hari ini)/i.test(msg)) {
+    // EXCLUSION: Skip if message is about mood/curhat/feelings - not calendar related
+    const moodExclusionKeywords = [
+        'curhat', 'ngerasa', 'ngrasa', 'merasa', 'perasaan', 'mood',
+        'sedih', 'senang', 'galau', 'bingung', 'stres', 'stress',
+        'berat', 'capek', 'lelah', 'marah', 'kesel', 'kesal',
+        'cemas', 'takut', 'khawatir', 'lonely', 'kesepian',
+        'lagi down', 'lagi bad', 'lagi gak enak', 'lagi ga enak',
+        'cerita', 'dengerin', 'denger', 'keluh', 'keluhan'
+    ];
+    
+    if (moodExclusionKeywords.some(keyword => msg.includes(keyword))) {
+        return null; // Not a calendar intent, let mood handler take it
+    }
+    
+    // Intent: Hari ini / Tanggal sekarang (harus lebih spesifik)
+    // Only match if clearly asking about date/calendar, not casual "hari ini"
+    // Patterns: "tanggal berapa", "tanggal apa", "tanggal hari ini", "hari ini tanggal berapa", etc.
+    if (/(tanggal\s+(hari ini\s+)?(ber)?apa|sekarang tanggal|tgl hari ini|hari ini (tanggal|tgl)|apa (tanggal|hari) (ini|sekarang)|tanggal hari ini)/i.test(msg)) {
+        return { intent: 'today' };
+    }
+    
+    // Also match "hari ini" but only if it's the main focus (short messages asking about today)
+    if (/^(hari ini|tanggal|tgl)[\?\!]?$/i.test(msg.trim())) {
         return { intent: 'today' };
     }
     

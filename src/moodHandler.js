@@ -284,15 +284,34 @@ const formatMood = (moodName) => {
  */
 const isMoodRequest = (message) => {
     const lowerMsg = message.toLowerCase();
-    const moodKeywords = [
+    
+    // Explicit mood/curhat keywords
+    const explicitKeywords = [
         'baca mood', 'mood w', 'mood gw', 'mood ku', 'mood aku',
         'perasaan w', 'perasaan gw', 'perasaan ku', 'perasaan aku',
-        'lagi ngerasa', 'lagi merasa', 'feeling w', 'feeling gw',
-        'curhat dong', 'mau curhat', 'dengerin curhat',
-        'w lagi', 'gw lagi', 'aku lagi', 'ku lagi'
+        'feeling w', 'feeling gw', 'feeling ku', 'feeling aku',
+        'curhat dong', 'mau curhat', 'dengerin curhat', 'denger curhat',
+        'cerita dong', 'mau cerita', 'dengerin cerita'
     ];
     
-    return moodKeywords.some(keyword => lowerMsg.includes(keyword));
+    if (explicitKeywords.some(keyword => lowerMsg.includes(keyword))) {
+        return true;
+    }
+    
+    // Pattern: "lagi [feeling]" or "ngerasa [feeling]"
+    const feelingPatterns = [
+        /\b(w|gw|gue|aku|ku)\s+(lagi|lg)\s+\w+/i,  // "w lagi sedih", "gw lagi berat"
+        /\b(lagi|lg)\s+(ngerasa|ngrasa|merasa|feel)\b/i, // "lagi ngerasa", "lagi merasa"
+        /\b(ngerasa|ngrasa|merasa)\s+.{3,}/i,  // "ngerasa hari ini berat"
+        /\bhari ini.*(berat|sedih|capek|lelah|stress|stres|galau|down)/i, // "hari ini agak berat"
+        /\b(berat|sedih|capek|lelah|stress|stres|galau|down).*(hari ini|akhir-akhir ini|belakangan)/i
+    ];
+    
+    if (feelingPatterns.some(pattern => pattern.test(lowerMsg))) {
+        return true;
+    }
+    
+    return false;
 };
 
 /**

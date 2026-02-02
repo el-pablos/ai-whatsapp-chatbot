@@ -145,8 +145,26 @@ describe('Mood Handler', () => {
             expect(isMoodRequest('perasaan w lagi ga enak')).toBe(true);
         });
 
+        test('should detect curhat with "hari ini" (not calendar)', () => {
+            // This was the bug - "hari ini" triggered calendar instead of mood
+            expect(isMoodRequest('mau curhat dong gw ngerasa hari ini agak berat banget')).toBe(true);
+        });
+
+        test('should detect "hari ini berat" feeling', () => {
+            expect(isMoodRequest('hari ini rasanya berat banget')).toBe(true);
+        });
+
+        test('should detect "w lagi" pattern', () => {
+            expect(isMoodRequest('w lagi down nih')).toBe(true);
+            expect(isMoodRequest('gw lagi stress')).toBe(true);
+        });
+
         test('should not detect regular messages', () => {
             expect(isMoodRequest('halo apa kabar')).toBe(false);
+        });
+
+        test('should not detect calendar questions', () => {
+            expect(isMoodRequest('hari ini tanggal berapa')).toBe(false);
         });
     });
 
