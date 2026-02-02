@@ -79,6 +79,12 @@ const {
     isYesNoQuestion,
     getSpreadFromMessage
 } = require('./tarotHandler');
+const {
+    splitMessage,
+    smartSend,
+    WA_MESSAGE_LIMIT
+} = require('./messageUtils');
+} = require('./tarotHandler');
 
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
@@ -428,8 +434,8 @@ const processMessage = async (msg) => {
             messageId: `bot_${Date.now()}`
         });
 
-        // Send response
-        await sock.sendMessage(sender, { text: aiResponse }, { quoted: msg });
+        // Send response (auto-splits long messages)
+        await smartSend(sock, sender, aiResponse, { quoted: msg });
 
     } catch (error) {
         console.error('[Bot] Error getting AI response:', error.message);
@@ -700,7 +706,8 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
             messageId: `bot_${Date.now()}`
         });
 
-        await sock.sendMessage(sender, { text: aiResponse }, { quoted: msg });
+        // Send response (auto-splits long vision analysis)
+        await smartSend(sock, sender, aiResponse, { quoted: msg });
 
     } catch (error) {
         console.error('[Bot] Error processing media:', error.message);
@@ -799,7 +806,8 @@ const handleUserLocation = async (msg, sender, pushName, locationMsg) => {
             messageId: `bot_${Date.now()}`
         });
 
-        await sock.sendMessage(sender, { text: aiResponse }, { quoted: msg });
+        // Send response
+        await smartSend(sock, sender, aiResponse, { quoted: msg });
 
     } catch (error) {
         console.error('[Bot] Error handling location:', error.message);
@@ -834,8 +842,37 @@ const handleTarotRequest = async (msg, sender, text, spreadType = null) => {
         // Perform the reading
         const result = await performReading(spread, question, history);
         
-        // Send response
-        await sock.sendMessage(sender, { text: result.reading }, { quoted: msg });
+        // Check if message needs to be split
+        const readingText = result.reading;
+        
+        if (readingText.length > WA_MESSAGE_LIMIT) {
+            // Split and send in chunks
+            const chunks = splitMessage(readingText);
+            console.log(`[Bot] Tarot reading split into ${chunks.length} messages`);
+            
+            for (let i = 0; i < chunks.length; i++) {
+                let chunkText = chunks[i];
+                
+                // Add part indicator
+                if (chunks.length > 1) {
+                    chunkText += `\n\n_[${i + 1}/${chunks.length}]_`;
+                }
+                
+                // Only quote first message
+                const msgOptions = i === 0 ? { quoted: msg } : {};
+                
+                await sock.sendMessage(sender, { text: chunkText }, msgOptions);
+                
+                // Small delay between messages
+                if (i < chunks.length - 1) {
+                    await new Promise(r => setTimeout(r, 500));
+                    await sock.sendPresenceUpdate('composing', sender);
+                }
+            }
+        } else {
+            // Send single message
+            await sock.sendMessage(sender, { text: readingText }, { quoted: msg });
+        }
         
         // Save to database
         saveMessage({
@@ -843,7 +880,7 @@ const handleTarotRequest = async (msg, sender, text, spreadType = null) => {
             senderJid: 'bot',
             senderName: 'Tama',
             role: 'assistant',
-            content: result.reading,
+            content: readingText,
             messageId: `bot_${Date.now()}`
         });
 
@@ -908,7 +945,8 @@ const handleMoodRequest = async (msg, sender, description) => {
         // Generate response
         const moodResponse = generateMoodResponse(moodAnalysis);
         
-        await sock.sendMessage(sender, { text: moodResponse }, { quoted: msg });
+        // Use smartSend for long responses
+        await smartSend(sock, sender, moodResponse, { quoted: msg });
         
         // Save to database
         saveMessage({
@@ -954,9 +992,9 @@ const gracefulShutdown = async (signal) => {
  */
 const main = async () => {
     console.log('╔════════════════════════════════════════════╗');
-    console.log('║  AI WhatsApp Chatbot - Tama Clone v2.0.0   ║');
+    console.log('║  AI WhatsApp Chatbot - Tama Clone v2.1.0   ║');
     console.log('║  by el-pablos                              ║');
-    console.log('║  Features: Memory, Vision, Location, Reply ║');
+    console.log('║  Features: Memory, Vision, Smart Messages  ║');
     console.log('╚════════════════════════════════════════════╝');
     console.log('');
 

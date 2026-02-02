@@ -758,7 +758,7 @@ const performReading = async (spreadType, question = '', conversationHistory = [
 };
 
 /**
- * Get AI interpretation of the reading
+ * Get AI interpretation of the reading with extended thinking
  */
 const getAIInterpretation = async (cards, spread, question, conversationHistory) => {
     try {
@@ -771,38 +771,61 @@ const getAIInterpretation = async (cards, spread, question, conversationHistory)
             return `${pos}: ${card.name} (${state}) - ${meaning}`;
         }).join('\n');
         
-        const prompt = `Kamu adalah pembaca tarot yang bijak dengan gaya casual Tama.
-        
-Spread: ${spread.nameId}
-Pertanyaan user: ${question || 'Tidak ada pertanyaan spesifik'}
+        // Enhanced system prompt for deeper analysis
+        const systemPrompt = `Kamu adalah MASTER TAROT READER dengan pengalaman 30+ tahun.
 
-Kartu yang keluar:
+PENDEKATAN ANALISIS:
+1. THINK DEEPLY - Analisis setiap kartu dengan cermat
+2. CONNECT THE DOTS - Hubungkan semua kartu dalam narasi yang kohesif
+3. PROVIDE INSIGHTS - Berikan insight yang mendalam dan actionable
+4. BE EMPATHETIC - Tunjukkan empati dan understanding
+
+GAYA BAHASA:
+- Gunakan bahasa Indonesia casual ala anak Jakarta/Jaksel
+- Pakai: "w", "gw", "lo", "lu", "bro", "anjir", "jir", "bgt"
+- Boleh pakai emoji tapi jangan berlebihan
+- Tetap profesional dalam analisis tapi delivery-nya santai
+
+FORMAT OUTPUT:
+- Buat analisis yang terstruktur dengan headers
+- Gunakan bullet points untuk clarity
+- Akhiri dengan saran praktis yang actionable`;
+
+        const prompt = `🔮 TAROT READING REQUEST
+
+SPREAD: ${spread.nameId}
+PERTANYAAN: ${question || 'Tidak ada pertanyaan spesifik - berikan general reading'}
+
+KARTU YANG KELUAR:
 ${cardsDescription}
 
-Berikan interpretasi yang:
-1. Menghubungkan semua kartu dalam satu narasi
-2. Menjawab pertanyaan user jika ada
-3. Memberikan saran praktis
-4. Menggunakan gaya bahasa Tama (w, gw, bro, dll)
-5. Empathetic tapi tetap fun
+---
 
-Interpretasi (dalam bahasa Indonesia casual):`;
+Sebagai master tarot reader, berikan interpretasi MENDALAM dengan langkah:
+
+1. **ANALISIS INDIVIDUAL** - Apa makna setiap kartu di posisinya?
+2. **PATTERN RECOGNITION** - Adakah pola/tema yang muncul dari kombinasi kartu?
+3. **NARRATIVE** - Hubungkan semua kartu dalam satu cerita yang kohesif
+4. **JAWABAN** - Jawab pertanyaan user secara spesifik
+5. **ADVICE** - Berikan 2-3 saran praktis berdasarkan reading
+
+PENTING: Analisis dengan DEPTH tapi sampaikan dengan gaya santai.`;
 
         const response = await axios.post(
             `${COPILOT_API_URL}/v1/chat/completions`,
             {
                 model: COPILOT_API_MODEL,
                 messages: [
-                    { role: 'system', content: 'Kamu adalah pembaca tarot yang bijak dengan gaya santai.' },
+                    { role: 'system', content: systemPrompt },
                     ...conversationHistory.slice(-3),
                     { role: 'user', content: prompt }
                 ],
-                temperature: 0.85,
-                max_tokens: 600
+                temperature: 0.8,
+                max_tokens: 2000 // Increased for longer, more detailed interpretations
             },
             {
                 headers: { 'Content-Type': 'application/json' },
-                timeout: 45000
+                timeout: 90000 // Longer timeout for complex analysis
             }
         );
         

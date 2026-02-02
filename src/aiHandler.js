@@ -1,16 +1,17 @@
 /**
- * AI Handler Module - Persona "Tama" v2.0
+ * AI Handler Module - Persona "Tama" v2.1
  * 
  * Modul ini menghandle integrasi dengan Copilot API dan memastikan
  * respons AI menggunakan gaya bicara spesifik Tama yang NATURAL & tidak NPD.
  * 
- * Fitur baru:
+ * Fitur:
  * - Unlimited conversation context via database
  * - Reply/quoted message awareness
  * - Image/media understanding
+ * - Extended thinking/reasoning for complex queries
  * 
  * @author Tama (el-pablos)
- * @version 2.0.0
+ * @version 2.1.0
  */
 
 const axios = require('axios');
