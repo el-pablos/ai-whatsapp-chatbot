@@ -147,10 +147,10 @@ Pake emoji secukupnya 🎬✨`;
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userMessage }
             ],
-            max_tokens: 500,
+            max_tokens: 2048,
             temperature: 0.7
         }, {
-            timeout: 30000,
+            timeout: 60000,
             headers: { 'Content-Type': 'application/json' }
         });
 

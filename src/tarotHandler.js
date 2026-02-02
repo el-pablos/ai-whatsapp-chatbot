@@ -821,11 +821,11 @@ PENTING: Analisis dengan DEPTH tapi sampaikan dengan gaya santai.`;
                     { role: 'user', content: prompt }
                 ],
                 temperature: 0.8,
-                max_tokens: 2000 // Increased for longer, more detailed interpretations
+                max_tokens: 4096 // Longer for detailed mystical interpretations
             },
             {
                 headers: { 'Content-Type': 'application/json' },
-                timeout: 90000 // Longer timeout for complex analysis
+                timeout: 120000 // 2 minutes for complex readings
             }
         );
         

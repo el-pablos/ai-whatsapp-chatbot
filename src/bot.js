@@ -149,8 +149,12 @@ const RECONNECT_INTERVAL = 5000; // 5 detik
 
 // Message deduplication - prevent processing same message twice
 const processedMessages = new Map();
-const MESSAGE_CACHE_TTL = 60000; // Keep message IDs for 60 seconds
-const MESSAGE_CACHE_CLEANUP_INTERVAL = 30000; // Cleanup every 30 seconds
+const MESSAGE_CACHE_TTL = 120000; // Keep message IDs for 2 minutes (increased)
+const MESSAGE_CACHE_CLEANUP_INTERVAL = 60000; // Cleanup every 60 seconds
+
+// Additional dedup by content hash (for messages with same content sent rapidly)
+const recentMessageHashes = new Map();
+const HASH_CACHE_TTL = 5000; // 5 seconds for content-based dedup
 
 // Cleanup old processed messages periodically
 setInterval(() => {
@@ -160,7 +164,67 @@ setInterval(() => {
             processedMessages.delete(msgId);
         }
     }
+    // Also cleanup content hashes
+    for (const [hash, timestamp] of recentMessageHashes) {
+        if (now - timestamp > HASH_CACHE_TTL) {
+            recentMessageHashes.delete(hash);
+        }
+    }
 }, MESSAGE_CACHE_CLEANUP_INTERVAL);
+
+/**
+ * Simple hash function for content-based deduplication
+ */
+const simpleHash = (str) => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        const char = str.charCodeAt(i);
+        hash = ((hash << 5) - hash) + char;
+        hash = hash & hash;
+    }
+    return hash.toString(36);
+};
+
+/**
+ * Send thinking indicator for long operations
+ * Returns a function to send progress updates
+ */
+const createThinkingIndicator = (sock, sender) => {
+    let thinkingMsgSent = false;
+    let thinkingTimeout = null;
+    
+    return {
+        // Start thinking indicator after delay (only shows if operation takes long)
+        startAfterDelay: (delayMs = 3000, message = '💭 *lagi mikir...*') => {
+            thinkingTimeout = setTimeout(async () => {
+                try {
+                    if (!thinkingMsgSent) {
+                        await sock.sendMessage(sender, { text: message });
+                        thinkingMsgSent = true;
+                    }
+                } catch (e) {
+                    console.error('[Bot] Failed to send thinking indicator:', e.message);
+                }
+            }, delayMs);
+        },
+        // Cancel thinking indicator (operation completed quickly)
+        cancel: () => {
+            if (thinkingTimeout) {
+                clearTimeout(thinkingTimeout);
+                thinkingTimeout = null;
+            }
+        },
+        // Send immediate update
+        sendUpdate: async (message) => {
+            try {
+                await sock.sendMessage(sender, { text: message });
+                thinkingMsgSent = true;
+            } catch (e) {
+                console.error('[Bot] Failed to send update:', e.message);
+            }
+        }
+    };
+};
 
 // Auth method configuration
 const AUTH_METHOD = process.env.WA_AUTH_METHOD || 'qr'; // 'qr' atau 'pairing'
@@ -466,13 +530,28 @@ const processMessage = async (msg) => {
     const pushName = msg.pushName || 'Bro';
     const messageId = msg.key.id;
 
-    // DEDUPLICATION: Skip if we already processed this message
+    // DEDUPLICATION 1: Skip if we already processed this exact message ID
     if (processedMessages.has(messageId)) {
-        console.log(`[Bot] Skipping duplicate message: ${messageId}`);
+        console.log(`[Bot] Skipping duplicate message ID: ${messageId}`);
         return;
     }
-    // Mark this message as processed
+    
+    // DEDUPLICATION 2: Skip if same content from same sender in last 5 seconds
+    // This catches Baileys double-firing the same message
+    const textContent = msg.message?.conversation || 
+                       msg.message?.extendedTextMessage?.text || 
+                       msg.message?.imageMessage?.caption ||
+                       msg.message?.documentMessage?.fileName || '';
+    const contentHash = simpleHash(`${sender}:${textContent}`);
+    
+    if (recentMessageHashes.has(contentHash)) {
+        console.log(`[Bot] Skipping duplicate content hash: ${contentHash}`);
+        return;
+    }
+    
+    // Mark this message as processed (both by ID and content hash)
     processedMessages.set(messageId, Date.now());
+    recentMessageHashes.set(contentHash, Date.now());
 
     // Extract quoted message info (for reply detection)
     const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
@@ -698,10 +777,19 @@ const processMessage = async (msg) => {
         // Get conversation history from database
         const history = getConversationHistory(sender);
         
+        // Create thinking indicator for long operations
+        const thinking = createThinkingIndicator(sock, sender);
+        
+        // Start thinking indicator if response takes > 5 seconds
+        thinking.startAfterDelay(5000, '💭 *bntar ya w lagi mikir...*');
+        
         // Fetch AI response with context
         const aiResponse = await fetchCopilotResponse(textContent, history, {
             quotedContent: quotedContent
         });
+        
+        // Cancel thinking indicator (response received)
+        thinking.cancel();
 
         console.log(`[Bot] Response untuk ${pushName}: ${aiResponse.slice(0, 100)}...`);
 
@@ -1152,12 +1240,23 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
         // Handle PDF/DOCX documents with AI analysis
         else if (mediaType === 'document' && isSupportedDocument(filename, mimetype)) {
             console.log(`[Bot] Processing document: ${filename}`);
+            
+            // Send progress indicator
+            await sock.sendMessage(sender, {
+                text: `📄 *Analyzing document...*\n\nwet bntar ya w baca file "${filename}" dulu 📖\n_ini mungkin butuh waktu sebentar..._`
+            });
+            
             const history = getConversationHistory(sender);
             const result = await processDocument(buffer, filename, mimetype, caption, history);
             aiResponse = result.analysis;
         }
         // Handle other documents
         else if (mediaType === 'document') {
+            // Send progress indicator
+            await sock.sendMessage(sender, {
+                text: `📄 *Processing file...*\n\nokei w proses file "${filename}" dulu ya 🔍`
+            });
+            
             const docInfo = await analyzeDocument(buffer, filename, mimetype);
             
             const history = getConversationHistory(sender);
@@ -1247,6 +1346,12 @@ const handleLocationRequest = async (msg, sender, query) => {
  */
 const handleUserLocation = async (msg, sender, pushName, locationMsg) => {
     console.log(`[Bot] Received location from ${pushName}`);
+    console.log(`[Bot] Location data:`, {
+        lat: locationMsg.degreesLatitude,
+        lon: locationMsg.degreesLongitude,
+        name: locationMsg.name,
+        address: locationMsg.address
+    });
 
     await sock.sendPresenceUpdate('composing', sender);
 

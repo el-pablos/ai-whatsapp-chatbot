@@ -287,13 +287,13 @@ const fetchCopilotResponse = async (userMessage, conversationHistory = [], optio
                 model: COPILOT_API_MODEL,
                 messages: messages,
                 temperature: 0.85, // Sedikit lebih kreatif untuk natural response
-                max_tokens: 800
+                max_tokens: 8192 // Unlimited-style: biar response ga kepotong
             },
             {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                timeout: 45000 // 45 detik timeout
+                timeout: 120000 // 2 menit timeout untuk long responses
             }
         );
 
@@ -363,11 +363,11 @@ const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conv
                 model: COPILOT_API_MODEL,
                 messages: messages,
                 temperature: 0.85,
-                max_tokens: 800
+                max_tokens: 8192 // Unlimited-style biar ga kepotong
             },
             {
                 headers: { 'Content-Type': 'application/json' },
-                timeout: 60000
+                timeout: 120000 // 2 menit untuk vision analysis
             }
         );
 

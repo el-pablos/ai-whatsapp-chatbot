@@ -192,10 +192,27 @@ const parseLocationRequest = (message) => {
  * @returns {Promise<Object>} - Location info with reverse geocoding
  */
 const handleIncomingLocation = async (locationMsg) => {
+    console.log('[Location] Raw location message:', JSON.stringify(locationMsg, null, 2));
+    
     const lat = locationMsg.degreesLatitude;
     const lon = locationMsg.degreesLongitude;
     
+    console.log(`[Location] Extracted coordinates: lat=${lat}, lon=${lon}`);
+    
+    if (!lat || !lon) {
+        console.error('[Location] Invalid coordinates - lat or lon is null/undefined');
+        return {
+            latitude: 0,
+            longitude: 0,
+            name: 'Unknown Location',
+            address: 'Koordinat tidak tersedia',
+            details: null,
+            gmapsUrl: null
+        };
+    }
+    
     const details = await reverseGeocode(lat, lon);
+    console.log('[Location] Reverse geocode result:', details?.name?.slice(0, 100));
     
     return {
         latitude: lat,

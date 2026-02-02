@@ -138,13 +138,16 @@ const isSupportedDocument = (filename, mimetype) => {
  */
 const extractPdfText = async (buffer) => {
     try {
+        console.log(`[Document] Extracting PDF text, buffer size: ${buffer.length}`);
         const data = await pdfParse(buffer);
+        console.log(`[Document] PDF extracted: ${data.numpages} pages, ${data.text?.length || 0} chars`);
         return {
             success: true,
             text: data.text,
             metadata: { pages: data.numpages, info: data.info }
         };
     } catch (error) {
+        console.error(`[Document] pdf-parse failed: ${error.message}, trying pdftotext...`);
         // Fallback to pdftotext command
         try {
             await ensureTempDir();
@@ -152,8 +155,10 @@ const extractPdfText = async (buffer) => {
             await fs.writeFile(tempPath, buffer);
             const { stdout } = await execAsync(`pdftotext -layout "${tempPath}" -`, { maxBuffer: 500 * 1024 * 1024 });
             await cleanupTemp(tempPath);
+            console.log(`[Document] pdftotext succeeded: ${stdout?.length || 0} chars`);
             return { success: true, text: stdout, metadata: {} };
         } catch (e) {
+            console.error(`[Document] pdftotext also failed: ${e.message}`);
             return { success: false, error: error.message, text: '', metadata: {} };
         }
     }
@@ -164,9 +169,12 @@ const extractPdfText = async (buffer) => {
  */
 const extractDocxText = async (buffer) => {
     try {
+        console.log(`[Document] Extracting DOCX text, buffer size: ${buffer.length}`);
         const result = await mammoth.extractRawText({ buffer });
+        console.log(`[Document] DOCX extracted: ${result.value?.length || 0} chars`);
         return { success: true, text: result.value, metadata: {} };
     } catch (error) {
+        console.error(`[Document] DOCX extraction failed: ${error.message}`);
         return { success: false, error: error.message, text: '', metadata: {} };
     }
 };
@@ -656,7 +664,7 @@ RULES:
             const response = await axios.post(`${COPILOT_API_URL}/v1/chat/completions`, {
                 model: COPILOT_API_MODEL,
                 messages,
-                max_tokens: 4000,
+                max_tokens: 8192, // Unlimited-style biar ga kepotong
                 temperature: 0.7
             }, {
                 timeout: 300000, // 5 minutes for very large docs

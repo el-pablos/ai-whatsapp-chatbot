@@ -37,16 +37,23 @@ const ensureTempDir = async () => {
  */
 const isStickerRequest = (text) => {
     if (!text) return false;
-    const lowerText = text.toLowerCase();
+    const lowerText = text.toLowerCase().trim();
     
-    const stickerKeywords = [
+    // Exact match keywords (short ones) - only if caption is exactly this
+    const exactKeywords = ['stiker', 'sticker', 'stk'];
+    if (exactKeywords.includes(lowerText)) {
+        return true;
+    }
+    
+    // Contains keywords (longer phrases - safer to match partially)
+    const containsKeywords = [
         'jadiin stiker', 'jadiin sticker', 'bikin stiker', 'bikin sticker',
         'buat stiker', 'buat sticker', 'jadi stiker', 'jadi sticker',
         'stiker dong', 'sticker dong', 'stickernya', 'stikernya',
-        'stiker', 'sticker', 'stk', 's'
+        'jadikan stiker', 'jadikan sticker'
     ];
     
-    return stickerKeywords.some(kw => lowerText === kw || lowerText.includes(kw));
+    return containsKeywords.some(kw => lowerText.includes(kw));
 };
 
 /**
