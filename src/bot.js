@@ -82,6 +82,7 @@ let sock = null;
 let isConnecting = false;
 let reconnectAttempts = 0;
 let pairingCodeRequested = false;
+let isAuthenticated = false; // Track if we have valid auth
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_INTERVAL = 5000; // 5 detik
 
@@ -91,6 +92,23 @@ const PHONE_NUMBER = process.env.WA_PHONE_NUMBER || '';
 
 // Auth folder
 const AUTH_FOLDER = 'auth_info_baileys';
+
+/**
+ * Check if auth folder has valid credentials
+ */
+const hasValidCredentials = () => {
+    try {
+        const credsPath = path.join(AUTH_FOLDER, 'creds.json');
+        if (fs.existsSync(credsPath)) {
+            const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
+            // Check if we have essential credentials
+            return !!(creds.me && creds.me.id);
+        }
+        return false;
+    } catch (error) {
+        return false;
+    }
+};
 
 /**
  * Inisialisasi dan connect ke WhatsApp
@@ -158,11 +176,14 @@ const connectToWhatsApp = async () => {
 const handleConnectionUpdate = async (update, state) => {
     const { connection, lastDisconnect, qr } = update;
 
-    // Handle pairing code method
-    if (AUTH_METHOD === 'pairing' && !state.creds.registered && !pairingCodeRequested) {
+    // Check if we already have valid credentials - skip pairing code request
+    const hasExistingAuth = hasValidCredentials() || state.creds?.me?.id;
+    
+    // Handle pairing code method - ONLY if no existing auth
+    if (AUTH_METHOD === 'pairing' && !hasExistingAuth && !pairingCodeRequested && !isAuthenticated) {
         if (PHONE_NUMBER) {
             pairingCodeRequested = true;
-            console.log('[Bot] Requesting pairing code untuk nomor:', PHONE_NUMBER);
+            console.log('[Bot] No existing auth found, requesting pairing code untuk nomor:', PHONE_NUMBER);
             
             setTimeout(async () => {
                 try {
@@ -184,16 +205,19 @@ const handleConnectionUpdate = async (update, state) => {
         } else {
             console.error('[Bot] WA_PHONE_NUMBER tidak diset!');
         }
+    } else if (hasExistingAuth && !isAuthenticated) {
+        console.log('[Bot] Existing credentials found, reconnecting without new pairing code...');
     }
 
-    // Handle QR code method
-    if (AUTH_METHOD === 'qr' && qr) {
+    // Handle QR code method - only if no existing auth
+    if (AUTH_METHOD === 'qr' && qr && !hasExistingAuth) {
         console.log('[Bot] QR Code received - scan dengan WA kamu ya bro! 📱');
         qrcode.generate(qr, { small: true });
     }
 
     if (connection === 'close') {
         isConnecting = false;
+        isAuthenticated = false;
         
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
@@ -205,13 +229,16 @@ const handleConnectionUpdate = async (update, state) => {
             scheduleReconnect();
         } else {
             console.log('[Bot] Logged out dari WA, hapus folder auth_info_baileys untuk scan ulang');
+            isAuthenticated = false;
             reconnectAttempts = 0;
         }
     }
 
     if (connection === 'open') {
         isConnecting = false;
+        isAuthenticated = true;
         reconnectAttempts = 0;
+        pairingCodeRequested = false; // Reset for future reconnects
         console.log('[Bot] ✅ Connected to WhatsApp successfully! Siap nerima pesan jir 🚀');
     }
 };
