@@ -538,11 +538,11 @@ const processMessage = async (msg) => {
     
     // DEDUPLICATION 2: Skip if same content from same sender in last 5 seconds
     // This catches Baileys double-firing the same message
-    const textContent = msg.message?.conversation || 
+    const msgTextContent = msg.message?.conversation || 
                        msg.message?.extendedTextMessage?.text || 
                        msg.message?.imageMessage?.caption ||
                        msg.message?.documentMessage?.fileName || '';
-    const contentHash = simpleHash(`${sender}:${textContent}`);
+    const contentHash = simpleHash(`${sender}:${msgTextContent}`);
     
     if (recentMessageHashes.has(contentHash)) {
         console.log(`[Bot] Skipping duplicate content hash: ${contentHash}`);
