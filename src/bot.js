@@ -1,20 +1,23 @@
 /**
- * AI WhatsApp Chatbot - Main Bot Service v2.1
+ * AI WhatsApp Chatbot - Main Bot Service v2.2
  * 
  * Bot WhatsApp menggunakan @whiskeysockets/baileys dengan:
  * - Persona AI "Tama" via Copilot API
  * - Unlimited conversation memory (SQLite)
  * - Image/file understanding (Vision API)
+ * - Document reading (PDF/DOCX)
+ * - YouTube downloader (MP3/MP4)
  * - Location sharing (OpenStreetMap)
  * - Reply detection
  * - Ethnicity detection (fun feature)
  * - Calendar & holiday checker
+ * - Mood & Tarot reading
  * - Auto reconnect handling
  * - Health Check server
  * - Cloudflare DNS automation
  * 
  * @author Tama El Pablo
- * @version 2.1.0
+ * @version 2.2.0
  */
 
 // Load environment variables
@@ -84,6 +87,19 @@ const {
     smartSend,
     WA_MESSAGE_LIMIT
 } = require('./messageUtils');
+const {
+    processDocument,
+    isSupportedDocument,
+    getDocumentInfo
+} = require('./documentHandler');
+const {
+    detectYoutubeUrl,
+    processYoutubeUrl,
+    downloadAsMP3,
+    downloadAsMP4,
+    parseFormatResponse,
+    cleanupFile
+} = require('./youtubeHandler');
 
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
@@ -98,6 +114,9 @@ const logger = pino({
 let sock = null;
 let isConnecting = false;
 let reconnectAttempts = 0;
+
+// Store pending YouTube downloads
+const pendingYoutubeDownloads = new Map();
 let pairingCodeRequested = false;
 let isAuthenticated = false; // Track if we have valid auth
 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -339,6 +358,39 @@ const processMessage = async (msg) => {
     if (!textContent) return;
 
     console.log(`[Bot] Pesan dari ${pushName} (${sender}): ${textContent}`);
+
+    // Check for button/list response (for YouTube format selection)
+    const buttonResponse = msg.message?.buttonsResponseMessage?.selectedButtonId ||
+                          msg.message?.listResponseMessage?.singleSelectReply?.selectedRowId;
+    if (buttonResponse) {
+        const ytFormat = parseFormatResponse(buttonResponse);
+        if (ytFormat) {
+            await handleYoutubeDownload(msg, sender, ytFormat.videoId, ytFormat.format);
+            return;
+        }
+    }
+
+    // Check for YouTube URL
+    const youtubeInfo = detectYoutubeUrl(textContent);
+    if (youtubeInfo) {
+        await handleYoutubeUrl(msg, sender, youtubeInfo);
+        return;
+    }
+
+    // Check for YouTube download format response (mp3/mp4)
+    const lowerText = textContent.toLowerCase().trim();
+    if ((lowerText === 'mp3' || lowerText === 'mp4') && pendingYoutubeDownloads.size > 0) {
+        // Get the most recent pending download for this user
+        const pendingEntries = Array.from(pendingYoutubeDownloads.entries());
+        if (pendingEntries.length > 0) {
+            const [videoId, info] = pendingEntries[pendingEntries.length - 1];
+            // Check if not too old (5 minutes)
+            if (Date.now() - info.timestamp < 5 * 60 * 1000) {
+                await handleYoutubeDownload(msg, sender, videoId, lowerText);
+                return;
+            }
+        }
+    }
 
     // Check for special commands
     if (await handleSpecialCommands(msg, sender, textContent)) {
@@ -653,6 +705,8 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
         const mimetype = msg.message?.imageMessage?.mimetype ||
                         msg.message?.documentMessage?.mimetype ||
                         'application/octet-stream';
+        
+        const filename = msg.message?.documentMessage?.fileName || 'unknown';
 
         // Save to database
         saveMessage({
@@ -679,9 +733,15 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
             const base64 = buffer.toString('base64');
             aiResponse = await fetchVisionResponse(base64, mimetype, caption, history);
         }
-        // Handle documents
+        // Handle PDF/DOCX documents with AI analysis
+        else if (mediaType === 'document' && isSupportedDocument(filename, mimetype)) {
+            console.log(`[Bot] Processing document: ${filename}`);
+            const history = getConversationHistory(sender);
+            const result = await processDocument(buffer, filename, mimetype, caption, history);
+            aiResponse = result.analysis;
+        }
+        // Handle other documents
         else if (mediaType === 'document') {
-            const filename = msg.message?.documentMessage?.fileName || 'unknown';
             const docInfo = await analyzeDocument(buffer, filename, mimetype);
             
             const history = getConversationHistory(sender);
@@ -968,6 +1028,140 @@ const handleMoodRequest = async (msg, sender, description) => {
 };
 
 /**
+ * Handle YouTube URL detection
+ */
+const handleYoutubeUrl = async (msg, sender, youtubeInfo) => {
+    console.log(`[Bot] YouTube URL detected: ${youtubeInfo.videoId}`);
+    
+    await sock.sendPresenceUpdate('composing', sender);
+
+    try {
+        // Process the URL and get video info with AI analysis
+        const result = await processYoutubeUrl(youtubeInfo.url);
+        
+        if (!result.success) {
+            await sock.sendMessage(sender, {
+                text: result.message || 'ga bisa akses video nya bro 😓'
+            }, { quoted: msg });
+            return;
+        }
+
+        // Store the video URL for later download
+        pendingYoutubeDownloads.set(result.info.id, {
+            url: youtubeInfo.url,
+            title: result.info.title,
+            timestamp: Date.now()
+        });
+
+        // Send AI analysis
+        await smartSend(sock, sender, result.analysis, { quoted: msg });
+
+        // Send format selection message
+        await sock.sendMessage(sender, {
+            text: `📥 *Mau download?*\n\nKetik:\n• *mp3* - untuk audio aja\n• *mp4* - untuk video lengkap\n\nAtau ketik *skip* kalo ga jadi`,
+        });
+
+        // Save to database
+        saveMessage({
+            chatId: sender,
+            senderJid: 'bot',
+            senderName: 'Tama',
+            role: 'assistant',
+            content: result.analysis,
+            messageId: `bot_${Date.now()}`
+        });
+
+    } catch (error) {
+        console.error('[Bot] Error processing YouTube URL:', error.message);
+        await sock.sendMessage(sender, {
+            text: 'duh error pas cek video nya 😓 coba lagi ya'
+        }, { quoted: msg });
+    }
+
+    await sock.sendPresenceUpdate('paused', sender);
+};
+
+/**
+ * Handle YouTube download request
+ */
+const handleYoutubeDownload = async (msg, sender, videoId, format) => {
+    console.log(`[Bot] YouTube download: ${videoId} as ${format}`);
+    
+    await sock.sendPresenceUpdate('composing', sender);
+
+    // Get stored video info
+    const stored = pendingYoutubeDownloads.get(videoId);
+    if (!stored) {
+        await sock.sendMessage(sender, {
+            text: 'waduh video nya udah expired bro, kirim ulang link nya ya 😅'
+        }, { quoted: msg });
+        return;
+    }
+
+    try {
+        // Send "downloading" message
+        await sock.sendMessage(sender, {
+            text: `⏳ lagi download ${format.toUpperCase()} nya bro, tunggu bentar ya...`
+        });
+
+        let result;
+        if (format === 'mp3') {
+            result = await downloadAsMP3(stored.url, videoId);
+        } else {
+            result = await downloadAsMP4(stored.url, videoId);
+        }
+
+        if (!result.success) {
+            await sock.sendMessage(sender, {
+                text: `❌ ${result.error}`
+            }, { quoted: msg });
+            return;
+        }
+
+        // Read the file
+        const fileBuffer = await fs.promises.readFile(result.filePath);
+
+        // Send the file
+        if (format === 'mp3') {
+            await sock.sendMessage(sender, {
+                audio: fileBuffer,
+                mimetype: 'audio/mpeg',
+                fileName: `${stored.title || videoId}.mp3`
+            }, { quoted: msg });
+        } else {
+            await sock.sendMessage(sender, {
+                video: fileBuffer,
+                mimetype: 'video/mp4',
+                fileName: `${stored.title || videoId}.mp4`,
+                caption: `🎬 ${stored.title || 'Video'}`
+            }, { quoted: msg });
+        }
+
+        // Cleanup
+        await cleanupFile(result.filePath);
+        pendingYoutubeDownloads.delete(videoId);
+
+        // Save to database
+        saveMessage({
+            chatId: sender,
+            senderJid: 'bot',
+            senderName: 'Tama',
+            role: 'assistant',
+            content: `[Sent ${format.toUpperCase()}: ${stored.title}]`,
+            messageId: `bot_${Date.now()}`
+        });
+
+    } catch (error) {
+        console.error('[Bot] Error downloading YouTube:', error.message);
+        await sock.sendMessage(sender, {
+            text: 'duh gagal download nya 😓 mungkin video nya terlalu gede atau ada masalah koneksi'
+        }, { quoted: msg });
+    }
+
+    await sock.sendPresenceUpdate('paused', sender);
+};
+
+/**
  * Graceful shutdown handler
  */
 const gracefulShutdown = async (signal) => {
@@ -990,11 +1184,11 @@ const gracefulShutdown = async (signal) => {
  * Main entry point
  */
 const main = async () => {
-    console.log('╔════════════════════════════════════════════╗');
-    console.log('║  AI WhatsApp Chatbot - Tama Clone v2.1.0   ║');
-    console.log('║  by el-pablos                              ║');
-    console.log('║  Features: Memory, Vision, Smart Messages  ║');
-    console.log('╚════════════════════════════════════════════╝');
+    console.log('╔═══════════════════════════════════════════════╗');
+    console.log('║  AI WhatsApp Chatbot - Tama Clone v2.2.0      ║');
+    console.log('║  by el-pablos                                 ║');
+    console.log('║  Features: Vision, Docs, YouTube, Tarot, Mood ║');
+    console.log('╚═══════════════════════════════════════════════╝');
     console.log('');
 
     try {
