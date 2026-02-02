@@ -124,6 +124,21 @@ let isAuthenticated = false; // Track if we have valid auth
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_INTERVAL = 5000; // 5 detik
 
+// Message deduplication - prevent processing same message twice
+const processedMessages = new Map();
+const MESSAGE_CACHE_TTL = 60000; // Keep message IDs for 60 seconds
+const MESSAGE_CACHE_CLEANUP_INTERVAL = 30000; // Cleanup every 30 seconds
+
+// Cleanup old processed messages periodically
+setInterval(() => {
+    const now = Date.now();
+    for (const [msgId, timestamp] of processedMessages) {
+        if (now - timestamp > MESSAGE_CACHE_TTL) {
+            processedMessages.delete(msgId);
+        }
+    }
+}, MESSAGE_CACHE_CLEANUP_INTERVAL);
+
 // Auth method configuration
 const AUTH_METHOD = process.env.WA_AUTH_METHOD || 'qr'; // 'qr' atau 'pairing'
 const PHONE_NUMBER = process.env.WA_PHONE_NUMBER || '';
@@ -419,6 +434,14 @@ const processMessage = async (msg) => {
     const sender = msg.key.remoteJid;
     const pushName = msg.pushName || 'Bro';
     const messageId = msg.key.id;
+
+    // DEDUPLICATION: Skip if we already processed this message
+    if (processedMessages.has(messageId)) {
+        console.log(`[Bot] Skipping duplicate message: ${messageId}`);
+        return;
+    }
+    // Mark this message as processed
+    processedMessages.set(messageId, Date.now());
 
     // Extract quoted message info (for reply detection)
     const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
