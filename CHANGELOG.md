@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Document handler model name (was hardcoded, now uses env var)
 - YouTube handler model name (was hardcoded, now uses env var)
+- **API URL consistency**: Fixed 404 errors in documentHandler and youtubeHandler
+  - Now correctly appends `/v1/chat/completions` to COPILOT_API_URL
 - Auth folder now uses absolute path for reliability
 - Credentials validation checks `registered` and complete `me.id`
 
