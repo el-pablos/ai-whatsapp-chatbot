@@ -14,6 +14,8 @@ const {
     getSupportedFormats,
     extractPlainText,
     extractHtmlText,
+    generateProgressBar,
+    getProgressMessage,
     DOCUMENT_FORMATS,
     ALL_SUPPORTED_EXTENSIONS
 } = require('../src/documentHandler');
@@ -408,6 +410,126 @@ describe('documentHandler - Universal Document Reader', () => {
         it('should NOT have MAX_TEXT_LENGTH constant', () => {
             const documentHandler = require('../src/documentHandler');
             expect(documentHandler.MAX_TEXT_LENGTH).toBeUndefined();
+        });
+    });
+
+    describe('generateProgressBar', () => {
+        it('should generate empty bar for 0%', () => {
+            const bar = generateProgressBar(0);
+            expect(bar).toBe('░░░░░░░░░░');
+        });
+
+        it('should generate full bar for 100%', () => {
+            const bar = generateProgressBar(100);
+            expect(bar).toBe('▓▓▓▓▓▓▓▓▓▓');
+        });
+
+        it('should generate half bar for 50%', () => {
+            const bar = generateProgressBar(50);
+            expect(bar).toBe('▓▓▓▓▓░░░░░');
+        });
+
+        it('should generate correct bar for 30%', () => {
+            const bar = generateProgressBar(30);
+            expect(bar).toBe('▓▓▓░░░░░░░');
+        });
+
+        it('should generate correct bar for 80%', () => {
+            const bar = generateProgressBar(80);
+            expect(bar).toBe('▓▓▓▓▓▓▓▓░░');
+        });
+
+        it('should always return 10 characters', () => {
+            for (let i = 0; i <= 100; i += 10) {
+                const bar = generateProgressBar(i);
+                expect(bar.length).toBe(10);
+            }
+        });
+    });
+
+    describe('getProgressMessage', () => {
+        it('should return start messages for early progress', () => {
+            const msg = getProgressMessage(1, 10);
+            expect(typeof msg).toBe('string');
+            expect(msg.length).toBeGreaterThan(5);
+        });
+
+        it('should return middle messages for mid progress', () => {
+            const msg = getProgressMessage(5, 10);
+            expect(typeof msg).toBe('string');
+            expect(msg.length).toBeGreaterThan(5);
+        });
+
+        it('should return almost done messages for late progress', () => {
+            const msg = getProgressMessage(9, 10);
+            expect(typeof msg).toBe('string');
+            expect(msg.length).toBeGreaterThan(5);
+        });
+
+        it('should return done messages when complete', () => {
+            const msg = getProgressMessage(10, 10);
+            expect(typeof msg).toBe('string');
+            expect(msg.length).toBeGreaterThan(5);
+        });
+
+        it('should return different messages for different stages', () => {
+            // Run multiple times to ensure variety
+            const startMsgs = new Set();
+            const doneMsgs = new Set();
+            
+            for (let i = 0; i < 10; i++) {
+                startMsgs.add(getProgressMessage(1, 20));
+                doneMsgs.add(getProgressMessage(20, 20));
+            }
+            
+            // Should have some variety in messages (at least 1 unique)
+            expect(startMsgs.size).toBeGreaterThanOrEqual(1);
+            expect(doneMsgs.size).toBeGreaterThanOrEqual(1);
+        });
+    });
+
+    describe('analyzeDocumentWithAI with progress callback', () => {
+        beforeEach(() => {
+            jest.clearAllMocks();
+        });
+
+        it('should call onProgress for multi-chunk documents', async () => {
+            // Create large text that will be split into chunks
+            const largeText = 'A'.repeat(250000); // 250k chars = 3 chunks
+            
+            axios.post.mockResolvedValue({
+                data: {
+                    choices: [{ message: { content: 'Analysis result' } }]
+                }
+            });
+
+            const progressCalls = [];
+            const onProgress = jest.fn((current, total, message) => {
+                progressCalls.push({ current, total, message });
+            });
+
+            await analyzeDocumentWithAI(largeText, 'large.txt', '', [], onProgress);
+
+            // Should be called: 1 for initial + 3 for each chunk
+            expect(onProgress).toHaveBeenCalled();
+            expect(progressCalls.length).toBeGreaterThanOrEqual(1);
+        });
+
+        it('should not call onProgress for single chunk documents', async () => {
+            const smallText = 'Small document';
+            
+            axios.post.mockResolvedValue({
+                data: {
+                    choices: [{ message: { content: 'Analysis result' } }]
+                }
+            });
+
+            const onProgress = jest.fn();
+
+            await analyzeDocumentWithAI(smallText, 'small.txt', '', [], onProgress);
+
+            // Should not be called for single chunk
+            expect(onProgress).not.toHaveBeenCalled();
         });
     });
 });

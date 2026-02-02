@@ -1247,13 +1247,23 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
         else if (mediaType === 'document' && isSupportedDocument(filename, mimetype)) {
             console.log(`[Bot] Processing document: ${filename}`);
             
-            // Send progress indicator
+            // Send initial progress indicator
             await sock.sendMessage(sender, {
                 text: `📄 *Analyzing document...*\n\nwet bntar ya w baca file "${filename}" dulu 📖\n_ini mungkin butuh waktu sebentar..._`
             });
             
+            // Create progress callback to send updates to user
+            const onProgress = async (current, total, message) => {
+                try {
+                    await sock.sendMessage(sender, { text: message });
+                    console.log(`[Document Progress] ${current}/${total} - sent to ${sender}`);
+                } catch (err) {
+                    console.error('[Document Progress] Failed to send update:', err.message);
+                }
+            };
+            
             const history = getConversationHistory(sender);
-            const result = await processDocument(buffer, filename, mimetype, caption, history);
+            const result = await processDocument(buffer, filename, mimetype, caption, history, onProgress);
             aiResponse = result.analysis;
         }
         // Handle other documents

@@ -93,6 +93,63 @@ const cleanupTempDir = async (dirPath) => {
 };
 
 /**
+ * Generate progress bar visual
+ * @param {number} percent - Progress percentage (0-100)
+ * @returns {string} Visual progress bar
+ */
+const generateProgressBar = (percent) => {
+    const filled = Math.round(percent / 10);
+    const empty = 10 - filled;
+    return '▓'.repeat(filled) + '░'.repeat(empty);
+};
+
+/**
+ * Get random progress message based on current progress
+ * @param {number} current - Current chunk number
+ * @param {number} total - Total chunks
+ * @returns {string} Progress message
+ */
+const getProgressMessage = (current, total) => {
+    const messages = {
+        start: [
+            'mulai baca nih... sabar ya bro 📖',
+            'lagi loading dokumen nya nih cuy...',
+            'otak AI lagi panas nih wkwk 🧠'
+        ],
+        middle: [
+            'masih proses nih... lu santai dulu ☕',
+            'wah panjang juga ya file nya wkwk',
+            'tetep ya, lagi analisis mendalam nih 🔍',
+            'sabar bro, AI butuh mikir juga ahahaha',
+            'hampir setengah jalan nih! 💪'
+        ],
+        almostDone: [
+            'bentar lagi kelar nih! 🎯',
+            'tinggal dikit lagi cuy!',
+            'finishing touches ya bro ✨',
+            'hampir selesai, prepare the confetti 🎉'
+        ],
+        done: [
+            'kelar juga akhirnya! 🎊',
+            'done bro! siap kirim hasil nya',
+            'selesai! ez pz lemon squeezy 🍋'
+        ]
+    };
+
+    const progress = current / total;
+    
+    if (current === total) {
+        return messages.done[Math.floor(Math.random() * messages.done.length)];
+    } else if (progress >= 0.8) {
+        return messages.almostDone[Math.floor(Math.random() * messages.almostDone.length)];
+    } else if (progress >= 0.3) {
+        return messages.middle[Math.floor(Math.random() * messages.middle.length)];
+    } else {
+        return messages.start[Math.floor(Math.random() * messages.start.length)];
+    }
+};
+
+/**
  * Detect document type from filename or mimetype
  */
 const detectDocumentType = (filename, mimetype) => {
@@ -590,8 +647,13 @@ const extractText = async (buffer, filename, mimetype) => {
 
 /**
  * Get AI analysis of document - NO LIMITS
+ * @param {string} text - Document text content
+ * @param {string} filename - Document filename
+ * @param {string} userRequest - User's request/question about the document
+ * @param {Array} history - Conversation history
+ * @param {Function} onProgress - Progress callback function(current, total, message)
  */
-const analyzeDocumentWithAI = async (text, filename, userRequest = '', history = []) => {
+const analyzeDocumentWithAI = async (text, filename, userRequest = '', history = [], onProgress = null) => {
     try {
         // Split into chunks if very large (for API token management)
         const chunks = [];
@@ -602,6 +664,11 @@ const analyzeDocumentWithAI = async (text, filename, userRequest = '', history =
                 chunks.push(text.substring(i, i + CHUNK_SIZE));
             }
             console.log(`[Document] Split into ${chunks.length} chunks for analysis`);
+            
+            // Notify about multi-chunk analysis starting
+            if (onProgress && chunks.length > 1) {
+                await onProgress(0, chunks.length, `📊 Dokumen besar terdeteksi! Dibagi jadi ${chunks.length} bagian buat dianalisis...`);
+            }
         } else {
             chunks.push(text);
         }
@@ -673,6 +740,19 @@ RULES:
 
             fullAnalysis += response.data.choices[0].message.content;
             
+            // Send progress update after each chunk
+            if (onProgress && chunks.length > 1) {
+                const progressPercent = Math.round(((i + 1) / chunks.length) * 100);
+                const progressBar = generateProgressBar(progressPercent);
+                const statusEmoji = i + 1 === chunks.length ? '✅' : '⏳';
+                
+                await onProgress(
+                    i + 1, 
+                    chunks.length, 
+                    `${statusEmoji} *Progres Analisis:* ${i + 1}/${chunks.length} bagian\n${progressBar} ${progressPercent}%\n\n_${getProgressMessage(i + 1, chunks.length)}_`
+                );
+            }
+            
             if (i < chunks.length - 1) {
                 fullAnalysis += '\n\n---\n\n';
             }
@@ -688,8 +768,14 @@ RULES:
 
 /**
  * Process document - MAIN ENTRY POINT - NO LIMITS
+ * @param {Buffer} buffer - Document buffer
+ * @param {string} filename - Document filename
+ * @param {string} mimetype - Document mimetype
+ * @param {string} userRequest - User's request about the document
+ * @param {Array} history - Conversation history
+ * @param {Function} onProgress - Progress callback function(current, total, message)
  */
-const processDocument = async (buffer, filename, mimetype, userRequest = '', history = []) => {
+const processDocument = async (buffer, filename, mimetype, userRequest = '', history = [], onProgress = null) => {
     const { type, ext } = detectDocumentType(filename, mimetype);
     
     if (type === 'unknown') {
@@ -729,7 +815,8 @@ const processDocument = async (buffer, filename, mimetype, userRequest = '', his
             extraction.text,
             filename,
             userRequest,
-            history
+            history,
+            onProgress  // Pass progress callback
         );
 
         return {
@@ -819,6 +906,8 @@ module.exports = {
     cleanupTemp,
     cleanupTempDir,
     formatSize,
+    generateProgressBar,
+    getProgressMessage,
     
     // Constants
     DOCUMENT_FORMATS,
