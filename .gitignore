@@ -1,34 +1,54 @@
 # Dependencies
 node_modules/
 
-# Environment variables
+# Environment variables (NEVER commit!)
 .env
+.env.local
+.env.*.local
 
-# WhatsApp session data
+# WhatsApp session data (SENSITIVE!)
 auth_info_baileys/
 
+# Database (contains user data!)
+data/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
 # Logs
+logs/
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Temporary files
+temp_docs/
+downloads/
+*.tmp
 
 # OS files
 .DS_Store
 Thumbs.db
+*.swp
+*~
 
 # IDE
 .vscode/
 .idea/
+*.sublime-*
 
-# Coverage
+# Coverage & Testing
 coverage/
+.nyc_output/
 
-# Build
+# Build artifacts
 dist/
 build/
+out/
 
-# Data files
-data/
-*.db
-*.db-*
+# Misc
+*.bak
+*.orig
 *.txt
-temp_docs/

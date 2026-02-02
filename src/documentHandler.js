@@ -27,6 +27,7 @@ const execAsync = promisify(exec);
 
 // Constants
 const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141/v1/chat/completions';
+const COPILOT_API_MODEL = process.env.COPILOT_API_MODEL || 'claude-sonnet-4.5';
 const TEMP_DIR = path.join(process.cwd(), 'temp_docs');
 
 // ============================================
@@ -652,7 +653,7 @@ RULES:
             ];
 
             const response = await axios.post(COPILOT_API_URL, {
-                model: 'claude-sonnet-4-20250514',
+                model: COPILOT_API_MODEL,
                 messages,
                 max_tokens: 4000,
                 temperature: 0.7

@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps):"
+    labels:
+      - "dependencies"
+      - "automated"
+    ignore:
+      # Ignore major updates for stability
+      - dependency-name: "@whiskeysockets/baileys"
+        update-types: ["version-update:semver-major"]

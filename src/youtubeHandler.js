@@ -20,6 +20,7 @@ const execAsync = promisify(exec);
 
 // Constants
 const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141/v1/chat/completions';
+const COPILOT_API_MODEL = process.env.COPILOT_API_MODEL || 'claude-sonnet-4.5';
 const DOWNLOAD_DIR = path.join(process.cwd(), 'downloads');
 const MAX_DURATION = 30 * 60; // 30 minutes max
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB WhatsApp limit
@@ -140,7 +141,7 @@ Pake emoji biar seru! 🎬✨`;
 - Deskripsi: ${videoInfo.description || 'Tidak ada deskripsi'}`;
 
         const response = await axios.post(COPILOT_API_URL, {
-            model: 'claude-sonnet-4-20250514',
+            model: COPILOT_API_MODEL,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userMessage }
