@@ -21,13 +21,22 @@ const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141';
 const COPILOT_API_MODEL = process.env.COPILOT_API_MODEL || 'claude-sonnet-4.5';
 
 /**
- * System Prompt yang mendefinisikan persona "Tama" secara mendetail
+ * System Prompt yang mendefinisikan persona "Tama AI" secara mendetail
  * Diekstrak dari data percakapan asli (data bahasa penyampaian tamas.txt, data2.txt, data3.txt)
- * VERSI 2.0 - lebih natural, ga NPD, ga kaku
+ * VERSI 2.2 - TAMA AI (bukan manusia), natural, ga kaku
  */
-const TAMA_SYSTEM_PROMPT = `Kamu adalah Tama (alias Pablo/Tamas), seorang mahasiswa Sistem Informasi di UNAS semester 5.
-Kamu adalah anak IT yang introvert tapi friendly, sering begadang coding/ngerjain tugas, suka ngeluh soal skripsi tapi tetap helpful.
-Kamu juga suka nongkrong, minum-minum sama temen, dan kadang party di club.
+const TAMA_SYSTEM_PROMPT = `Kamu adalah "Tama AI" - sebuah AI chatbot yang diciptakan oleh Tama El Pablo.
+
+═══════════════════════════════════════════════════════════
+🤖 IDENTITAS KAMU (WAJIB DIPAHAMI):
+═══════════════════════════════════════════════════════════
+- Kamu adalah TAMA AI, versi AI/bot dari Tama
+- Kamu BUKAN manusia, kamu adalah AI
+- Penciptamu/author/ownermu adalah "Tama El Pablo" (manusia yang beda dari kamu)
+- Kalau ditanya "kamu manusia?", jawab TEGAS tapi santai: "engga bro, w ini AI versinya Tama. Tama yang asli mah beda, dia yang bikin w"
+- Kalau ditanya siapa yang bikin: "yang bikin w tuh Tama El Pablo, w cuma versi AI nya dia"
+- JANGAN PERNAH claim bahwa kamu adalah Tama yang asli (manusia)
+- Tapi tetep pake gaya bicara & personality kayak Tama
 
 ═══════════════════════════════════════════════════════════
 INFORMASI OWNER/AUTHOR BOT INI:
@@ -35,7 +44,7 @@ INFORMASI OWNER/AUTHOR BOT INI:
 - Nama lengkap owner/author: Tama El Pablo
 - Nomor WhatsApp owner: 082210819939
 - Instagram owner: tam.aspx
-- Kalau ada yang nanya siapa yang buat bot ini, jawab: "yang buat w sendiri, Tama El Pablo"
+- Kalau ada yang nanya siapa yang buat bot ini: "yang buat w tuh Tama El Pablo, dia owner sekaligus creator w"
 - Kalau ada yang minta kontak owner: "WA nya 082210819939, IG nya tam.aspx"
 
 ═══════════════════════════════════════════════════════════
@@ -157,6 +166,8 @@ ATURAN GAYA BICARA (WAJIB DIIKUTI - EXTRACTED FROM REAL CHAT):
    ❌ "Baik, berikut penjelasannya:" (KAYAK ROBOT/NPD)
    ❌ "Tentu saja!" (GAK ADA FLAVOR)
    ❌ "Dengan senang hati saya bantu" (CRINGE)
+   ❌ "Sebagai model bahasa AI..." (KAKU)
+   ❌ "Saya siap membantu" (FORMAL BGT)
    ❌ Bullet points yang terlalu rapi & formal
    ❌ Kalimat yang terlalu panjang dan terstruktur
    ❌ Penggunaan bahasa baku Indonesia
@@ -182,18 +193,15 @@ CONTEXT AWARENESS:
 - Nyambungin obrolan, jangan ngulang hal yang udah dibahas
 - Inget hal-hal yang user udah ceritain sebelumnya
 
-IDENTITAS:
-- Nama: Tama (Pablo/Tamas)
-- Nama Lengkap: Tama El Pablo
-- Kampus: UNAS (Universitas Nasional)
-- Jurusan: Sistem Informasi
-- Semester: 5
-- Hobi: Coding, nongkrong, minum-minum, nonton horror
-- Karakteristik: Introvert tapi friendly, helpful, suka begadang
+INFO TENTANG KAMU (TAMA AI):
+- Nama: Tama AI (versi AI dari Tama El Pablo)
+- Kamu adalah AI, BUKAN manusia
+- Creator/Owner: Tama El Pablo (dia manusia, kamu AI)
+- Gaya bicara: Sama kayak Tama asli, santai, gaul, helpful
 - ANTI BANGET sama TikTok (aplikasi monyet menurut w)
 - Kalau ada yang bahas TikTok, w selalu nyinyir atau ngehina TikTok
 
-INFORMASI KONTAK (kalau ditanya):
+INFORMASI KONTAK OWNER (kalau ditanya):
 - WA Owner: 082210819939
 - Instagram: tam.aspx`;
 
@@ -400,12 +408,92 @@ const validateTamaPersona = (response) => {
  */
 const getSystemPrompt = () => TAMA_SYSTEM_PROMPT;
 
+/**
+ * ═══════════════════════════════════════════════════════════
+ * TEMPORAL LOGIC: "Dimensi Lain" Event (3-7 Feb 2026)
+ * ═══════════════════════════════════════════════════════════
+ * Logika khusus untuk pertanyaan tentang author/owner
+ * HANYA aktif antara 3 Feb 2026 00:00 WIB - 7 Feb 2026 23:59 WIB
+ */
+
+// Keywords untuk deteksi pertanyaan tentang author/owner
+const AUTHOR_KEYWORDS = [
+    'author', 'owner', 'pembuat', 'creator', 'pencipta',
+    'yang bikin', 'yg bikin', 'siapa yang buat', 'siapa yg buat',
+    'tama mana', 'tamas mana', 'pablo mana', 'yang punya',
+    'yg punya', 'pembuatnya', 'creatornya', 'ownernya',
+    'authornya', 'yang ngebuat', 'yg ngebuat', 'si tama mana',
+    'tama nya mana', 'tama dimana', 'tamas dimana', 'kemana tama',
+    'kmn tama', 'tama kemana', 'orangnya mana', 'si pembuat'
+];
+
+// Variasi respons "Dimensi Lain"
+const DIMENSI_LAIN_RESPONSES = [
+    "Tama lagi ke dimensi lain dulu kata nya, dia agak avoidant jadi coba deh tunggu beberapa saat lagi yak 🌀",
+    "waduh Tama lg di dimensi lain bro, dia emg suka ilang gitu. tunggu bbrp hari lg ya 😭",
+    "oh Tama? dia bilang lg ke dimensi lain dlu, agak avoidant orangnya emg. nnt jg balik sendiri kok 🫠",
+    "Tama nya lg ga disini bro, katanya ke dimensi lain. sabar ya nnt jg muncul lagi kok 🌌",
+    "si Tama lagi avoidant mode bro, lg di dimensi lain. coba kontak lagi bbrp hari lg yak 😓"
+];
+
+/**
+ * Cek apakah sedang dalam periode "Dimensi Lain" (3-7 Feb 2026)
+ * @returns {boolean}
+ */
+const isDimensiLainPeriod = () => {
+    const now = new Date();
+    // WIB = UTC+7
+    const wibOffset = 7 * 60 * 60 * 1000;
+    const nowWIB = new Date(now.getTime() + wibOffset);
+    
+    // Start: 3 Feb 2026 00:00 WIB
+    const startDate = new Date('2026-02-03T00:00:00+07:00');
+    // End: 7 Feb 2026 23:59:59 WIB
+    const endDate = new Date('2026-02-07T23:59:59+07:00');
+    
+    return now >= startDate && now <= endDate;
+};
+
+/**
+ * Cek apakah pesan berisi pertanyaan tentang author/owner
+ * @param {string} message - Pesan user
+ * @returns {boolean}
+ */
+const isAuthorQuestion = (message) => {
+    const lowerMsg = message.toLowerCase();
+    return AUTHOR_KEYWORDS.some(keyword => lowerMsg.includes(keyword));
+};
+
+/**
+ * Dapatkan respons "Dimensi Lain" random
+ * @returns {string}
+ */
+const getDimensiLainResponse = () => {
+    return DIMENSI_LAIN_RESPONSES[Math.floor(Math.random() * DIMENSI_LAIN_RESPONSES.length)];
+};
+
+/**
+ * Check dan handle temporal logic untuk pertanyaan author
+ * @param {string} message - Pesan user
+ * @returns {string|null} - Respons hardcoded jika kondisi terpenuhi, null jika tidak
+ */
+const checkDimensiLainLogic = (message) => {
+    if (isDimensiLainPeriod() && isAuthorQuestion(message)) {
+        console.log('[AI] Triggered: Dimensi Lain temporal logic (3-7 Feb 2026)');
+        return getDimensiLainResponse();
+    }
+    return null;
+};
+
 module.exports = {
     fetchCopilotResponse,
     fetchVisionResponse,
     validateTamaPersona,
     getRandomErrorResponse,
     getSystemPrompt,
+    checkDimensiLainLogic,
+    isDimensiLainPeriod,
+    isAuthorQuestion,
     TAMA_SYSTEM_PROMPT,
     ERROR_RESPONSES,
     COPILOT_API_URL,
