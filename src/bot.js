@@ -271,6 +271,7 @@ const hasValidCredentials = () => {
 
 /**
  * Clean up invalid/corrupt auth files
+ * IMPORTANT: Don't remove auth if me.id exists - pairing might be in progress
  */
 const cleanupInvalidAuth = () => {
     try {
@@ -279,9 +280,17 @@ const cleanupInvalidAuth = () => {
             const credsContent = fs.readFileSync(credsPath, 'utf8');
             try {
                 const creds = JSON.parse(credsContent);
-                // If not registered or no valid me.id, clean up
-                if (!creds.registered || !creds.me?.id?.includes('@')) {
-                    console.log('[Auth] Removing incomplete auth, will request new pairing code');
+                
+                // If me.id exists, pairing was successful - DON'T delete!
+                // Even if registered is false, the connection will set it to true
+                if (creds.me?.id) {
+                    console.log('[Auth] Found existing pairing (me.id exists), keeping auth');
+                    return false;
+                }
+                
+                // Only cleanup if no me.id at all (never paired)
+                if (!creds.me?.id) {
+                    console.log('[Auth] No pairing found (no me.id), cleaning up for fresh start');
                     fs.unlinkSync(credsPath);
                     return true;
                 }
@@ -423,6 +432,16 @@ const handleConnectionUpdate = async (update, state) => {
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
 
         console.log(`[Bot] Connection closed. Status: ${statusCode}`);
+
+        // Status 515 = Stream restart required (normal after pairing)
+        // Don't cleanup auth, just reconnect
+        if (statusCode === 515) {
+            console.log('[Bot] Stream restart required (515) - this is normal after pairing, reconnecting...');
+            setTimeout(() => {
+                connectToWhatsApp();
+            }, 2000);
+            return;
+        }
 
         if (shouldReconnect) {
             console.log('[Bot] Bukan logout, attempting reconnect...');
