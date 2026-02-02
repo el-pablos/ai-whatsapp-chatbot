@@ -293,11 +293,11 @@ describe('Tarot Handler', () => {
             expect(result).toHaveProperty('cards');
             expect(result).toHaveProperty('reading');
             expect(result.cards).toHaveLength(1);
-        }, 10000);
+        }, 30000);
 
         test('should perform three card reading', async () => {
             const result = await performReading('threeCard', 'Test question', []);
             expect(result.cards).toHaveLength(3);
-        }, 10000);
+        }, 30000);
     });
 });

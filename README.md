@@ -3,7 +3,7 @@
 </p>
 
 <h1 align="center">
-  🤖 Tama AI WhatsApp Bot
+  🤖 Tama AI WhatsApp Bot v2.3
 </h1>
 
 <p align="center">
@@ -11,28 +11,26 @@
 </p>
 
 <p align="center">
-  <a href="#features">Features</a> •
-  <a href="#tech-stack">Tech Stack</a> •
-  <a href="#installation">Installation</a> •
-  <a href="#configuration">Configuration</a> •
-  <a href="#usage">Usage</a> •
-  <a href="#api">API</a> •
-  <a href="#testing">Testing</a>
+  <a href="#-features">Features</a> •
+  <a href="#-tech-stack">Tech Stack</a> •
+  <a href="#-installation">Installation</a> •
+  <a href="#-configuration">Configuration</a> •
+  <a href="#-usage">Usage</a> •
+  <a href="#-api-integration">API</a> •
+  <a href="#-testing">Testing</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-2.1.0-blue.svg?style=for-the-badge" alt="Version"/>
+  <img src="https://img.shields.io/badge/version-2.3.0-blue.svg?style=for-the-badge" alt="Version"/>
   <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-green.svg?style=for-the-badge&logo=node.js" alt="Node"/>
-  <img src="https://img.shields.io/badge/tests-103%20passing-success.svg?style=for-the-badge" alt="Tests"/>
-  <img src="https://img.shields.io/badge/coverage-84%25-yellow.svg?style=for-the-badge" alt="Coverage"/>
+  <img src="https://img.shields.io/badge/documents-70%2B%20formats-orange.svg?style=for-the-badge" alt="Documents"/>
+  <img src="https://img.shields.io/badge/AI-100%25%20Integrated-success.svg?style=for-the-badge" alt="AI"/>
   <img src="https://img.shields.io/badge/license-MIT-purple.svg?style=for-the-badge" alt="License"/>
 </p>
 
 <br/>
 
 ---
-
-<br/>
 
 ## ✨ Overview
 
@@ -53,422 +51,479 @@
 
 </details>
 
-<br/>
-
 ---
-
-<br/>
 
 ## 🚀 Features
 
-<table>
-<tr>
-<td width="50%">
-
-### 💬 AI Chat dengan Persona
-- Gaya bicara anak muda Jakarta
-- Pakai bahasa gaul & slang
-- Natural typo (kayak manusia)
-- Emoji ekspresif
-- Bisa ngeluh & sarcasm
-
-</td>
-<td width="50%">
+### 💬 AI Chat dengan Persona Natural
+- **Gaya Bicara Jakarta** - Pakai bahasa gaul, slang, dan idiom lokal
+- **Natural Typo** - Typo intentional kayak manusia beneran
+- **Emoji Ekspresif** - Biar chat lebih hidup 🔥
+- **Sarcasm & Humor** - Bisa ngeluh, sarcasm, dan jokes
+- **Context Aware** - Paham konteks percakapan sebelumnya
 
 ### 🧠 Memory & Context
-- Unlimited chat history (SQLite)
-- Reply/quoted message awareness
-- 24-hour session expiry
-- Context-aware responses
+- **Unlimited History** - SQLite database untuk menyimpan semua percakapan
+- **Reply Awareness** - Paham pesan yang di-reply
+- **Multi-session** - Support chat berbeda-beda
+- **Persistent Auth** - Sekali pair, ga perlu auth ulang
 
-</td>
-</tr>
-<tr>
-<td width="50%">
+### 👁️ Vision & Image Understanding
+- **Image Analysis** - Bisa liat dan pahami gambar
+- **Screenshot Reading** - Baca teks dari screenshot
+- **Meme Understanding** - Paham meme dan context visual
+- **Ethnicity Detection** - Fun feature tebak suku dari foto
 
-### 👁️ Vision & Media
-- Image understanding (Vision API)
-- Document analysis
-- Ethnicity detection (fun feature)
-- Media caption analysis
+### 📄 Universal Document Reader (70+ Formats!)
 
-</td>
-<td width="50%">
+**TANPA BATAS SIZE atau TEXT LENGTH!** Semua dokumen diproses 100% dengan AI.
 
-### 📍 Location Features
-- Location sharing via OpenStreetMap
-- Place search & directions
-- Incoming location detection
-- Maps integration
+<details>
+<summary><b>📋 Supported Formats</b></summary>
 
-</td>
-</tr>
-<tr>
-<td width="50%">
+#### 📝 Office Documents
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| Microsoft Word | `.doc`, `.docx`, `.docm` | Word documents |
+| Word Templates | `.dot`, `.dotx` | Word templates |
+| OpenDocument | `.odt` | LibreOffice/OpenOffice |
+| Rich Text | `.rtf` | Rich Text Format |
+| WordPerfect | `.wpd`, `.wps` | WordPerfect docs |
+| AbiWord | `.abw`, `.zabw` | AbiWord documents |
+| Lotus | `.lwp` | Lotus Word Pro |
+| Hangul | `.hwp` | Korean Hangul |
+| Apple Pages | `.pages` | Apple Pages |
 
-### 📅 Calendar & Schedule
-- Indonesian calendar view
-- National holiday checker
-- Zodiac calculator
-- Birthday countdown
-- Natural language date parsing
+#### 📊 Spreadsheets
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| Microsoft Excel | `.xls`, `.xlsx`, `.xlsm` | Excel spreadsheets |
+| OpenDocument | `.ods` | LibreOffice Calc |
+| CSV/TSV | `.csv`, `.tsv` | Plain text data |
 
-</td>
-<td width="50%">
+#### 📽️ Presentations
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| PowerPoint | `.ppt`, `.pptx`, `.pptm` | PowerPoint slides |
+| PowerPoint Show | `.ppsx`, `.pps` | Slide shows |
+| Templates | `.pot`, `.potx` | PowerPoint templates |
+| OpenDocument | `.odp` | LibreOffice Impress |
+| Keynote | `.key` | Apple Keynote |
+| WPS Office | `.dps` | WPS Presentation |
 
-### 🛡️ Infrastructure
-- Auto reconnect handling
-- Health check server
-- Cloudflare DNS automation
-- PM2 process management
-- Comprehensive logging
+#### 📚 Ebooks
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| EPUB | `.epub` | Standard ebook format |
+| Kindle | `.mobi`, `.azw`, `.azw3`, `.azw4` | Amazon Kindle |
+| FictionBook | `.fb2` | FictionBook format |
+| Microsoft LIT | `.lit` | MS Reader |
+| Sony Reader | `.lrf` | Sony ebook |
+| Palm | `.pdb`, `.pml`, `.prc` | Palm devices |
+| Other | `.rb`, `.snb`, `.tcr`, `.txtz` | Various ebook formats |
+| CHM | `.chm` | Compiled HTML Help |
+| DjVu | `.djvu`, `.djv` | Scanned documents |
 
-</td>
-</tr>
-</table>
+#### 📦 Comics
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| Comic RAR | `.cbr` | RAR-compressed comics |
+| Comic ZIP | `.cbz` | ZIP-compressed comics |
+| Comic TAR | `.cbc` | TAR-compressed comics |
 
-<br/>
+#### 🌐 Web Formats
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| HTML | `.html`, `.htm` | Web pages |
+| XHTML | `.xhtml` | XHTML documents |
+| MHTML | `.mhtml`, `.mht` | Web archives |
+| HTML-ZIP | `.htmlz` | Zipped HTML |
+
+#### 📁 Archives
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| ZIP | `.zip` | Standard ZIP |
+| RAR | `.rar` | WinRAR archive |
+| 7-Zip | `.7z` | 7-Zip archive |
+| TAR | `.tar` | Tape archive |
+| GZIP | `.gz`, `.tgz` | Gzip compressed |
+| BZIP2 | `.bz2`, `.tbz`, `.tbz2` | Bzip2 compressed |
+| XZ | `.xz`, `.txz` | XZ compressed |
+| Other | `.lzo`, `.z`, `.rz` | Other compression |
+
+#### 📄 Plain Text
+| Format | Extension | Description |
+|--------|-----------|-------------|
+| Text | `.txt` | Plain text |
+| Markdown | `.md`, `.markdown` | Markdown |
+| reStructuredText | `.rst` | RST docs |
+| LaTeX | `.tex` | LaTeX documents |
+| Logs | `.log` | Log files |
+| Config | `.ini`, `.cfg`, `.conf` | Config files |
+| Data | `.json`, `.xml`, `.yaml`, `.yml` | Structured data |
+
+</details>
+
+### 🎵 YouTube Downloader
+- **Auto-detect** - Langsung detect YouTube URL
+- **MP3 Download** - Convert ke audio MP3
+- **MP4 Download** - Download video dengan kualitas terbaik
+- **AI Summary** - Analisis konten video dengan AI
+
+### 📍 Location Sharing
+- **Place Search** - Cari tempat pakai OpenStreetMap
+- **Location Messages** - Kirim lokasi langsung ke chat
+- **Multiple Results** - Tampilkan beberapa hasil pencarian
+- **Maps Integration** - Link ke Google Maps / Apple Maps
+
+### 📅 Calendar & Holiday
+- **Date Check** - Cek hari libur/tanggal penting
+- **Holiday Awareness** - Tau libur nasional Indonesia
+- **Event Detection** - Deteksi event/perayaan
+
+### 🔮 Mood & Tarot Reading
+- **Mood Analysis** - Analisis mood dari chat
+- **78-Card Tarot** - Complete tarot deck
+- **Multiple Spreads** - Single card, 3 cards, Celtic Cross, dll
+- **AI Interpretation** - Interpretasi tarot dengan AI
+
+### 🛠️ Infrastructure
+- **Health Check Server** - HTTP endpoint untuk monitoring
+- **Cloudflare DNS** - Auto-update DNS record
+- **PM2 Integration** - Process management
+- **Auto Reconnect** - Handle disconnect otomatis
+- **Persistent Auth** - Auth tersimpan permanen
 
 ---
 
-<br/>
-
 ## 🛠️ Tech Stack
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Node.js"/>
-  <img src="https://img.shields.io/badge/Baileys-25D366?style=for-the-badge&logo=whatsapp&logoColor=white" alt="Baileys"/>
-  <img src="https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite"/>
-  <img src="https://img.shields.io/badge/Express-000000?style=for-the-badge&logo=express&logoColor=white" alt="Express"/>
-  <img src="https://img.shields.io/badge/Claude_AI-191919?style=for-the-badge&logo=anthropic&logoColor=white" alt="Claude"/>
-  <img src="https://img.shields.io/badge/Jest-C21325?style=for-the-badge&logo=jest&logoColor=white" alt="Jest"/>
-  <img src="https://img.shields.io/badge/PM2-2B037A?style=for-the-badge&logo=pm2&logoColor=white" alt="PM2"/>
-  <img src="https://img.shields.io/badge/Cloudflare-F38020?style=for-the-badge&logo=cloudflare&logoColor=white" alt="Cloudflare"/>
-</p>
 
 | Component | Technology |
 |-----------|------------|
 | **Runtime** | Node.js 18+ |
-| **WhatsApp Client** | @whiskeysockets/baileys v7 |
-| **AI Model** | Claude Sonnet 4.5 via Copilot API |
+| **WhatsApp** | @whiskeysockets/baileys v7.0.0 |
+| **AI Backend** | Copilot API (Claude claude-sonnet-4.5) |
 | **Database** | SQLite (better-sqlite3) |
-| **Web Server** | Express.js |
 | **Process Manager** | PM2 |
-| **DNS Management** | Cloudflare API |
-| **Testing** | Jest with Coverage |
-
-<br/>
+| **Document Processing** | LibreOffice, Calibre, Pandoc |
+| **YouTube** | yt-dlp |
+| **Testing** | Jest |
 
 ---
-
-<br/>
 
 ## 📦 Installation
 
 ### Prerequisites
 
-- Node.js 18.0.0 or higher
-- npm or yarn
-- Git
-- [Copilot API](https://github.com/copilot-api) running locally
+```bash
+# Node.js 18+
+node --version  # Should be >= 18.0.0
+
+# System dependencies (Ubuntu/Debian)
+sudo apt-get update
+sudo apt-get install -y \
+    libreoffice-common \
+    libreoffice-writer \
+    calibre \
+    pandoc \
+    p7zip-full \
+    unrar \
+    antiword \
+    catdoc \
+    poppler-utils \
+    djvulibre-bin \
+    ffmpeg
+```
 
 ### Quick Start
 
-\`\`\`bash
+```bash
 # Clone repository
 git clone https://github.com/el-pablos/ai-whatsapp-chatbot.git
-
-# Navigate to directory
 cd ai-whatsapp-chatbot
 
 # Install dependencies
 npm install
 
-# Copy environment template
+# Setup environment
 cp .env.example .env
+# Edit .env with your configuration
 
-# Edit configuration
-nano .env
-
-# Start bot
+# Start the bot
 npm start
-\`\`\`
 
-### Using PM2 (Recommended)
-
-\`\`\`bash
-# Install PM2 globally
-npm install -g pm2
-
-# Start with ecosystem config
+# Or with PM2
 pm2 start ecosystem.config.js
-
-# Save PM2 config
-pm2 save
-
-# Enable startup script
-pm2 startup
-\`\`\`
-
-<br/>
+```
 
 ---
-
-<br/>
 
 ## ⚙️ Configuration
 
-Create \`.env\` file with the following variables:
+### Environment Variables (.env)
 
-\`\`\`env
-# ═══════════════════════════════════════════
-# 🤖 AI Configuration
-# ═══════════════════════════════════════════
-COPILOT_API_URL=http://localhost:4141
-COPILOT_API_MODEL=claude-sonnet-4.5
-
-# ═══════════════════════════════════════════
-# 🌐 Health Check Server
-# ═══════════════════════════════════════════
-HEALTH_CHECK_PORT=8008
-HEALTH_CHECK_DOMAIN=your-domain.com
-
-# ═══════════════════════════════════════════
-# ☁️ Cloudflare DNS (Optional)
-# ═══════════════════════════════════════════
-CF_ZONE_ID=your_zone_id
-CF_ACCOUNT_ID=your_account_id
-CF_DNS_API_TOKEN=your_api_token
-
-# ═══════════════════════════════════════════
-# 📁 Paths
-# ═══════════════════════════════════════════
-DB_PATH=./data/chat_memory.db
+```env
+# AI API Configuration
+COPILOT_API_URL=http://localhost:4141/v1/chat/completions
 LOG_LEVEL=info
-\`\`\`
 
-<br/>
+# WhatsApp Auth
+WA_AUTH_METHOD=pairing  # 'pairing' atau 'qr'
+WA_PHONE_NUMBER=628xxx  # Nomor untuk pairing code
+
+# Cloudflare (optional)
+CLOUDFLARE_API_TOKEN=your_token
+CLOUDFLARE_ZONE_ID=your_zone_id
+CLOUDFLARE_RECORD_NAME=your_record_name
+
+# Health Check
+HEALTH_CHECK_PORT=3000
+```
+
+### PM2 Configuration
+
+```bash
+# Start all services
+pm2 start ecosystem.config.js
+
+# View status
+pm2 status
+
+# View logs
+pm2 logs wa-tama-bot
+
+# Restart bot
+pm2 restart wa-tama-bot
+```
 
 ---
-
-<br/>
 
 ## 📱 Usage
 
-### First Time Setup
+### First Time Setup (Pairing Code)
 
-1. **Start the bot** - Run \`npm start\` or \`pm2 start\`
-2. **Get pairing code** - Bot will display 8-digit code
-3. **Link device** - WhatsApp > Linked Devices > Link with phone number
-4. **Enter code** - Type the pairing code
-5. **Done!** - Bot is now connected
+1. Set `WA_AUTH_METHOD=pairing` dan `WA_PHONE_NUMBER` di `.env`
+2. Start bot: `npm start`
+3. Bot akan generate pairing code
+4. Buka WhatsApp > Linked Devices > Link a Device
+5. Pilih "Link with phone number instead"
+6. Masukkan pairing code yang ditampilkan
 
-### Commands
+### Chat Commands
 
 | Command | Description |
 |---------|-------------|
-| \`/help\` | Tampilkan bantuan |
-| \`/clear\` | Hapus history chat |
-| \`/stats\` | Lihat statistik bot |
-| \`/kalender\` | Lihat kalender bulan ini |
-| \`/libur\` | Cek libur nasional terdekat |
-| \`/zodiak [tgl]\` | Cek zodiak (contoh: \`/zodiak 1 jan\`) |
-| \`/ultah [tgl]\` | Cek info ultah (contoh: \`/ultah 1/1/2000\`) |
-| \`/tebaksuku\` | Kirim foto, tebak suku (fun) |
+| *halo/hai* | Mulai chat dengan Tama |
+| *kirim gambar* | Tama analisis gambar |
+| *kirim dokumen* | Tama baca & analisis dokumen |
+| *[YouTube URL]* | Download sebagai MP3/MP4 |
+| *cariin [tempat]* | Cari lokasi tempat |
+| *hari ini tanggal berapa* | Info kalender & libur |
+| *baca mood gw* | Analisis mood dari chat |
+| *tarot gw* | Tarot reading |
+| *tebak suku* | + foto = tebak suku |
 
-### Natural Language Examples
+### Document Analysis Example
 
-\`\`\`
-User: tanggal hari ini berapa?
-Tama: 📅 Sabtu, 1 Februari 2026
-      🕐 Jam 22:30 WIB
-      📝 Weekend nih, santai dulu lah
-
-User: kapan libur nasional?
-Tama: 📅 Libur Nasional Terdekat:
-      📌 Hari Raya Nyepi - 19 Maret 2026
-      ⏰ Hari Raya Idul Fitri - 20 Maret 2026
-      ...
-
-User: zodiak aku 15 agustus
-Tama: ♌ Zodiak kamu: Leo
-      Elemen: Api
-\`\`\`
-
-<br/>
+```
+User: [kirim PDF buku 500 halaman]
+Tama: 📄 *File:* buku-tebal.pdf
+      📊 *Tipe:* PDF Document
+      📏 *Ukuran:* 2.5 MB (485,000 karakter)
+      
+      🔍 *Overview:*
+      Ini buku tentang [ringkasan konten]...
+      
+      📋 *Detail Penting:*
+      - Chapter 1: ...
+      - Chapter 2: ...
+      
+      💡 *Insight:*
+      Menurut gw sih buku ini [analisis AI]...
+```
 
 ---
 
-<br/>
+## 🔌 API Integration
 
-## 🔌 API Endpoints
+### Copilot API
 
-### Health Check Server (Port 8008)
+Bot menggunakan Copilot API untuk AI responses. Default: `localhost:4141`
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| \`/\` | GET | Main health check + available endpoints |
-| \`/health\` | GET | Simple health status |
-| \`/status\` | GET | Detailed server status |
-| \`/dashboard\` | GET | Full dashboard with stats & users |
-| \`/users\` | GET | List all users with phone numbers |
-| \`/stats\` | GET | Database statistics |
-| \`/cleanup\` | POST | Trigger session cleanup |
-
-### Example Response
-
-\`\`\`json
-GET /dashboard
-
+```javascript
+// Request format
+POST /v1/chat/completions
 {
-  "status": "ok",
-  "bot": {
-    "name": "Tama AI Bot",
-    "version": "2.1.0",
-    "author": "Tama El Pablo",
-    "contact": {
-      "whatsapp": "082210819939",
-      "instagram": "tam.aspx"
-    }
-  },
-  "database": {
-    "totalMessages": 1250,
-    "activeMessages": 89,
-    "totalUsers": 45,
-    "activeChats": 12,
-    "sessionExpiryHours": 24
-  },
-  "users": [
-    {
-      "phone": "628123456789",
-      "name": "User Name",
-      "messageCount": 50,
-      "isActive": true
-    }
+  "model": "claude-sonnet-4-20250514",
+  "messages": [...],
+  "max_tokens": 4000,
+  "temperature": 0.7
+}
+```
+
+### Vision API
+
+Untuk image understanding, bot menggunakan endpoint yang sama dengan image base64:
+
+```javascript
+// Image message format
+{
+  "role": "user",
+  "content": [
+    { "type": "text", "text": "Analisis gambar ini" },
+    { "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,..." }}
   ]
 }
-\`\`\`
-
-<br/>
+```
 
 ---
-
-<br/>
 
 ## 🧪 Testing
 
-### Run Tests
-
-\`\`\`bash
+```bash
 # Run all tests
 npm test
 
-# Run with verbose output
-npm test -- --verbose
+# Run with coverage
+npm run test:coverage
 
-# Run specific test file
-npm test -- tests/calendarHandler.test.js
-
-# Run with coverage report
-npm test -- --coverage
-\`\`\`
+# Run specific test
+npm test -- --testPathPattern=documentHandler
+```
 
 ### Test Coverage
 
-\`\`\`
---------------------|---------|----------|---------|---------|
-File                | % Stmts | % Branch | % Funcs | % Lines |
---------------------|---------|----------|---------|---------|
-All files           |   84.07 |    74.73 |      80 |   83.92 |
- aiHandler.js       |   75.51 |       60 |   71.42 |   76.08 |
- calendarHandler.js |   90.16 |    78.44 |     100 |   90.05 |
- dnsUpdater.js      |   96.38 |    72.97 |     100 |   96.34 |
- healthCheck.js     |   64.36 |       75 |    61.9 |   62.65 |
---------------------|---------|----------|---------|---------|
-\`\`\`
-
-<br/>
+| Module | Coverage |
+|--------|----------|
+| aiHandler | 85% |
+| documentHandler | 90% |
+| calendarHandler | 95% |
+| moodHandler | 88% |
+| tarotHandler | 92% |
+| youtubeHandler | 85% |
 
 ---
-
-<br/>
 
 ## 📁 Project Structure
 
-\`\`\`
+```
 ai-whatsapp-chatbot/
-├── 📂 src/
-│   ├── 🤖 bot.js              # Main bot service
-│   ├── 🧠 aiHandler.js        # AI & persona logic
-│   ├── 📅 calendarHandler.js  # Calendar features
-│   ├── 💾 database.js         # SQLite operations
-│   ├── 🌐 dnsUpdater.js       # Cloudflare DNS sync
-│   ├── ❤️ healthCheck.js      # Express health server
-│   ├── 📍 locationHandler.js  # Location features
-│   └── 🖼️ mediaHandler.js     # Media processing
-├── 📂 tests/
-│   ├── aiHandler.test.js
-│   ├── calendarHandler.test.js
-│   ├── dnsUpdater.test.js
-│   ├── healthCheck.test.js
-│   └── setup.js
-├── 📂 data/
-│   └── chat_memory.db         # SQLite database
-├── 📂 auth_info_baileys/      # WhatsApp session
-├── ⚙️ ecosystem.config.js     # PM2 config
-├── ⚙️ jest.config.js          # Jest config
-├── 📋 package.json
-└── 📖 README.md
-\`\`\`
-
-<br/>
+├── src/
+│   ├── bot.js              # Main bot entry point
+│   ├── aiHandler.js        # AI/Copilot API handler
+│   ├── documentHandler.js  # Universal document reader (70+ formats)
+│   ├── youtubeHandler.js   # YouTube downloader
+│   ├── mediaHandler.js     # Image/media processing
+│   ├── locationHandler.js  # Location/maps features
+│   ├── calendarHandler.js  # Calendar & holiday
+│   ├── moodHandler.js      # Mood analysis
+│   ├── tarotHandler.js     # Tarot reading (78 cards)
+│   ├── messageUtils.js     # Message chunking utility
+│   ├── database.js         # SQLite database
+│   ├── healthCheck.js      # Health check server
+│   └── dnsUpdater.js       # Cloudflare DNS updater
+├── tests/
+│   └── *.test.js           # Unit tests
+├── auth_info_baileys/      # WhatsApp auth (persist!)
+├── data/
+│   └── media/              # Downloaded media
+├── logs/                   # PM2 logs
+├── ecosystem.config.js     # PM2 configuration
+├── package.json
+└── README.md
+```
 
 ---
 
-<br/>
+## 🔧 Troubleshooting
+
+### Auth Issues
+
+```bash
+# Jika perlu re-auth, hapus folder auth:
+rm -rf auth_info_baileys
+
+# Restart bot untuk dapat pairing code baru
+pm2 restart wa-tama-bot
+```
+
+### Document Processing Issues
+
+```bash
+# Check if LibreOffice installed
+libreoffice --version
+
+# Check if Calibre installed
+ebook-convert --version
+
+# Test PDF extraction
+pdftotext -v
+```
+
+### Connection Issues
+
+```bash
+# Check logs
+pm2 logs wa-tama-bot --lines 100
+
+# Check Copilot API
+curl http://localhost:4141/v1/models
+```
+
+---
+
+## 📜 Changelog
+
+### v2.3.0 (Latest)
+- ✨ **Universal Document Reader** - Support 70+ document formats
+- ✨ **No Size Limits** - Baca dokumen berapapun ukurannya
+- ✨ **Archive Support** - Baca isi ZIP, RAR, 7z, TAR, dll
+- 🔧 **Improved Auth** - Auth persist across restarts
+- 🔧 **Better Error Handling** - Lebih robust error handling
+
+### v2.2.0
+- ✨ YouTube Downloader (MP3/MP4)
+- ✨ Basic PDF/DOCX reading
+
+### v2.1.0
+- ✨ Message chunking for long responses
+- ✨ Tarot reading (78 cards)
+- ✨ Mood analysis
+
+### v2.0.0
+- ✨ Vision API integration
+- ✨ SQLite memory
+- ✨ Location sharing
+- ✨ Calendar features
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repo
+2. Create feature branch (`git checkout -b feature/amazing`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing`)
+5. Open Pull Request
+
+---
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) file
+
+---
 
 ## 👨‍💻 Author
 
-<p align="center">
-  <img src="https://avatars.githubusercontent.com/el-pablos" alt="Tama El Pablo" width="100" style="border-radius: 50%"/>
-</p>
-
-<p align="center">
-  <strong>Tama El Pablo</strong>
-</p>
-
-<p align="center">
-  <a href="https://wa.me/6282210819939">
-    <img src="https://img.shields.io/badge/WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white" alt="WhatsApp"/>
-  </a>
-  <a href="https://instagram.com/tam.aspx">
-    <img src="https://img.shields.io/badge/Instagram-E4405F?style=for-the-badge&logo=instagram&logoColor=white" alt="Instagram"/>
-  </a>
-  <a href="https://github.com/el-pablos">
-    <img src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub"/>
-  </a>
-</p>
-
-<br/>
-
----
-
-<br/>
-
-## 📜 License
-
-<p align="center">
-  This project is licensed under the <strong>MIT License</strong>
-</p>
-
-<p align="center">
-  Made with ❤️ and ☕ by <a href="https://github.com/el-pablos">Tama El Pablo</a>
-</p>
-
-<br/>
+**Tama El Pablo** ([@el-pablos](https://github.com/el-pablos))
 
 ---
 
 <p align="center">
-  <sub>⭐ Star this repo if you find it useful!</sub>
+  <b>🔥 Built with ❤️ and lots of ☕</b>
+</p>
+
+<p align="center">
+  <i>"Santai aja bro, bot ini bisa handle semua dokumen lo tanpa batas!" 😎</i>
 </p>

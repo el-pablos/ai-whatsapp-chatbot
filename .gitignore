@@ -31,3 +31,4 @@ data/
 *.db
 *.db-*
 *.txt
+temp_docs/

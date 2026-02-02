@@ -1,11 +1,11 @@
 /**
- * AI WhatsApp Chatbot - Main Bot Service v2.2
+ * AI WhatsApp Chatbot - Main Bot Service v2.3
  * 
  * Bot WhatsApp menggunakan @whiskeysockets/baileys dengan:
  * - Persona AI "Tama" via Copilot API
  * - Unlimited conversation memory (SQLite)
  * - Image/file understanding (Vision API)
- * - Document reading (PDF/DOCX)
+ * - Universal Document Reader (70+ formats - NO LIMITS!)
  * - YouTube downloader (MP3/MP4)
  * - Location sharing (OpenStreetMap)
  * - Reply detection
@@ -13,11 +13,12 @@
  * - Calendar & holiday checker
  * - Mood & Tarot reading
  * - Auto reconnect handling
+ * - Persistent auth (auth_info_baileys)
  * - Health Check server
  * - Cloudflare DNS automation
  * 
  * @author Tama El Pablo
- * @version 2.2.0
+ * @version 2.3.0
  */
 
 // Load environment variables
@@ -90,7 +91,8 @@ const {
 const {
     processDocument,
     isSupportedDocument,
-    getDocumentInfo
+    getDocumentInfo,
+    getSupportedFormats
 } = require('./documentHandler');
 const {
     detectYoutubeUrl,
@@ -126,24 +128,73 @@ const RECONNECT_INTERVAL = 5000; // 5 detik
 const AUTH_METHOD = process.env.WA_AUTH_METHOD || 'qr'; // 'qr' atau 'pairing'
 const PHONE_NUMBER = process.env.WA_PHONE_NUMBER || '';
 
-// Auth folder
-const AUTH_FOLDER = 'auth_info_baileys';
+// Auth folder - use absolute path for reliability
+const AUTH_FOLDER = path.join(process.cwd(), 'auth_info_baileys');
 
 /**
- * Check if auth folder has valid credentials
+ * Check if auth folder has valid, complete credentials
+ * Returns true ONLY if credentials are complete and valid
  */
 const hasValidCredentials = () => {
     try {
         const credsPath = path.join(AUTH_FOLDER, 'creds.json');
-        if (fs.existsSync(credsPath)) {
-            const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-            // Check if we have essential credentials
-            return !!(creds.me && creds.me.id);
+        if (!fs.existsSync(credsPath)) {
+            console.log('[Auth] No creds.json found');
+            return false;
         }
-        return false;
+        
+        const credsContent = fs.readFileSync(credsPath, 'utf8');
+        
+        // Check if JSON is valid and complete
+        try {
+            const creds = JSON.parse(credsContent);
+            
+            // Check for essential credentials
+            const hasMe = !!(creds.me && creds.me.id && creds.me.id.includes('@'));
+            const isRegistered = creds.registered === true;
+            const hasKeys = !!(creds.noiseKey && creds.signedIdentityKey);
+            
+            console.log(`[Auth] Check - me: ${hasMe}, registered: ${isRegistered}, keys: ${hasKeys}`);
+            
+            // Must be registered and have complete me.id with @s.whatsapp.net
+            return hasMe && isRegistered && hasKeys;
+        } catch (parseErr) {
+            console.log('[Auth] creds.json corrupt or invalid JSON, will request new auth');
+            return false;
+        }
     } catch (error) {
+        console.log('[Auth] Error checking credentials:', error.message);
         return false;
     }
+};
+
+/**
+ * Clean up invalid/corrupt auth files
+ */
+const cleanupInvalidAuth = () => {
+    try {
+        const credsPath = path.join(AUTH_FOLDER, 'creds.json');
+        if (fs.existsSync(credsPath)) {
+            const credsContent = fs.readFileSync(credsPath, 'utf8');
+            try {
+                const creds = JSON.parse(credsContent);
+                // If not registered or no valid me.id, clean up
+                if (!creds.registered || !creds.me?.id?.includes('@')) {
+                    console.log('[Auth] Removing incomplete auth, will request new pairing code');
+                    fs.unlinkSync(credsPath);
+                    return true;
+                }
+            } catch (e) {
+                // Invalid JSON, remove it
+                console.log('[Auth] Removing corrupt auth file');
+                fs.unlinkSync(credsPath);
+                return true;
+            }
+        }
+    } catch (error) {
+        console.log('[Auth] Error cleaning auth:', error.message);
+    }
+    return false;
 };
 
 /**
@@ -162,8 +213,20 @@ const connectToWhatsApp = async () => {
         // Initialize database
         initDatabase();
         
+        // Ensure auth folder exists
+        if (!fs.existsSync(AUTH_FOLDER)) {
+            fs.mkdirSync(AUTH_FOLDER, { recursive: true });
+        }
+        
+        // Cleanup invalid/corrupt auth before loading
+        cleanupInvalidAuth();
+        
         // Load auth state dari folder
         const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
+        
+        // Check if we have valid existing auth
+        const hasExistingAuth = hasValidCredentials();
+        console.log(`[Bot] Existing valid auth: ${hasExistingAuth ? 'YES ✅' : 'NO ❌'}`);
         
         // Fetch versi Baileys terbaru
         const { version } = await fetchLatestBaileysVersion();
@@ -275,7 +338,20 @@ const handleConnectionUpdate = async (update, state) => {
         isAuthenticated = true;
         reconnectAttempts = 0;
         pairingCodeRequested = false; // Reset for future reconnects
-        console.log('[Bot] ✅ Connected to WhatsApp successfully! Siap nerima pesan jir 🚀');
+        
+        // Log connected user info
+        const me = state.creds?.me || sock.user;
+        if (me) {
+            console.log('╔═══════════════════════════════════════════════════════════╗');
+            console.log('║        ✅ WHATSAPP CONNECTED SUCCESSFULLY!               ║');
+            console.log('╠═══════════════════════════════════════════════════════════╣');
+            console.log(`║  📱 Account: ${me.id?.split('@')[0] || me.id || 'Unknown'}       `);
+            console.log(`║  🤖 Bot: Tama v2.3.0                                      ║`);
+            console.log(`║  💾 Auth saved to: ${AUTH_FOLDER}                  ║`);
+            console.log('╚═══════════════════════════════════════════════════════════╝');
+        } else {
+            console.log('[Bot] ✅ Connected to WhatsApp successfully! Siap nerima pesan jir 🚀');
+        }
     }
 };
 
