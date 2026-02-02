@@ -738,18 +738,18 @@ const processMessage = async (msg) => {
             
             const searchResult = await webSearch(searchRequest.query);
             
-            if (searchResult.success && searchResult.results.length > 0) {
+            if (searchResult && searchResult.success && searchResult.hasContent) {
                 // Format search results
                 const formattedResults = formatSearchResult(searchResult);
                 
                 // Get AI summary of search results
                 const history = getConversationHistory(sender);
-                const searchContext = `User mencari info tentang: "${searchRequest.query}"\n\nHasil pencarian:\n${formattedResults}`;
+                const searchContext = `User mencari info tentang: "${searchRequest.query}"\n\nHasil pencarian:\n${formattedResults || 'Tidak ada hasil yang relevan'}`;
                 
                 const aiResponse = await fetchCopilotResponse(
                     `berdasarkan hasil pencarian ini, kasih rangkuman yang informatif dan helpful untuk user:\n\n${searchContext}`,
                     history,
-                    { searchResults: searchResult.results }
+                    { searchResults: searchResult }
                 );
                 
                 saveMessage({
@@ -1012,14 +1012,14 @@ const handleSpecialCommands = async (msg, sender, text) => {
         
         const searchResult = await webSearch(query);
         
-        if (searchResult.success && searchResult.results.length > 0) {
+        if (searchResult && searchResult.success && searchResult.hasContent) {
             const formattedResults = formatSearchResult(searchResult);
             const history = getConversationHistory(sender);
             
             const aiResponse = await fetchCopilotResponse(
-                `berdasarkan hasil pencarian ini, kasih rangkuman yang informatif:\n\nQuery: "${query}"\n\nHasil:\n${formattedResults}`,
+                `berdasarkan hasil pencarian ini, kasih rangkuman yang informatif:\n\nQuery: "${query}"\n\nHasil:\n${formattedResults || 'Tidak ada hasil'}`,
                 history,
-                { searchResults: searchResult.results }
+                { searchResults: searchResult }
             );
             
             await smartSend(sock, sender, aiResponse, { quoted: msg });

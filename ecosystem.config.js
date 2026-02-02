@@ -12,15 +12,16 @@ module.exports = {
         {
             name: 'copilot-api',
             cwd: '/root/work/copilot-api',
-            script: 'bun',
-            args: 'run start',
+            script: '/snap/bin/bun',
+            args: 'run ./src/main.ts start',
             interpreter: 'none',
             watch: false,
             autorestart: true,
             max_restarts: 10,
             restart_delay: 5000,
             env: {
-                NODE_ENV: 'production'
+                NODE_ENV: 'production',
+                PATH: '/snap/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
             },
             error_file: '/root/work/ai-whatsapp-chatbot/logs/copilot-api-error.log',
             out_file: '/root/work/ai-whatsapp-chatbot/logs/copilot-api-out.log',
