@@ -507,12 +507,13 @@ const formatTime = (datetime) => {
 
 /**
  * Detect weather-related queries in message
+ * v2.0 - SMART PARSING: Remove filler words & extract city intelligently
  * 
  * @param {string} message - User message
  * @returns {Object|null} - { type: 'weather'|'earthquake', city?: string }
  */
 const detectWeatherQuery = (message) => {
-    const lower = message.toLowerCase();
+    const lower = message.toLowerCase().trim();
     
     // Earthquake patterns
     const earthquakePatterns = [
@@ -529,41 +530,93 @@ const detectWeatherQuery = (message) => {
         }
     }
     
-    // Weather patterns
-    const weatherPatterns = [
-        /(?:cuaca|weather)\s+(?:di\s+)?(.+?)(?:\s+(?:hari\s*ini|sekarang|besok|gimana|bagaimana))?\s*[\?\!]?$/i,
-        /(?:gimana|bagaimana|gmn)\s+cuaca\s+(?:di\s+)?(.+)/i,
-        /prakiraan\s+(?:cuaca\s+)?(?:di\s+)?(.+)/i,
-        /(?:hujan|panas|mendung)\s+(?:ga|gak|tidak)?\s*(?:di\s+)?(.+)/i,
-        /(?:mau|bakal)\s+(?:hujan|cerah)\s+(?:ga|gak)?\s*(?:di\s+)?(.+)/i
+    // Check if this is a weather-related query at all
+    const weatherKeywords = /(?:cuaca|weather|prakiraan|hujan|panas|mendung|cerah|gerimis|badai|berawan)/i;
+    if (!weatherKeywords.test(lower)) {
+        return null;
+    }
+    
+    // ════════════════════════════════════════════════════════════════════
+    // SMART CITY EXTRACTION v2.0
+    // Remove ALL filler words first, then extract city
+    // ════════════════════════════════════════════════════════════════════
+    
+    // Step 1: Remove common filler words/phrases (Indonesian conversational patterns)
+    const fillerPatterns = [
+        // Time indicators
+        /\b(hari\s*ini|sekarang|besok|lusa|kemarin|nanti|tadi|pagi|siang|sore|malam)\b/gi,
+        // Question words
+        /\b(gimana|bagaimana|gmn|bgmn|kayak\s*apa|kaya\s*apa|seperti\s*apa)\b/gi,
+        // Particles/politeness
+        /\b(dong|donk|deh|sih|nih|ya|yah|yaa|kah|lah|kan|gak|ga|tidak|nggak|ngga)\b/gi,
+        // Weather keywords (we'll extract city separately)
+        /\b(cuaca|weather|prakiraan|hujan|panas|mendung|cerah|gerimis|berawan)\b/gi,
+        // Prepositions
+        /\b(di|ke|dari|untuk|buat)\b/gi,
+        // Question marks and punctuation
+        /[\?\!\.\,]+/g,
+        // Extra whitespace
+        /\s+/g
     ];
     
-    for (const pattern of weatherPatterns) {
-        const match = lower.match(pattern);
-        if (match && match[1]) {
-            const city = match[1].replace(/[\?\!\.]+$/, '').trim();
-            if (city.length > 1) {
-                return { type: 'weather', city };
+    let cleaned = lower;
+    for (const pattern of fillerPatterns) {
+        cleaned = cleaned.replace(pattern, ' ');
+    }
+    cleaned = cleaned.trim();
+    
+    // Step 2: What's left should be the city name (or empty)
+    let extractedCity = cleaned.trim();
+    
+    // Step 3: Validate extracted city
+    if (extractedCity && extractedCity.length > 1) {
+        // Check if it's a known city or alias
+        const cityCode = getCityCode(extractedCity);
+        if (cityCode) {
+            return { type: 'weather', city: extractedCity };
+        }
+        
+        // Try to find a known city within the extracted text
+        const allCities = getAvailableCities();
+        for (const knownCity of allCities) {
+            if (extractedCity.includes(knownCity) || knownCity.includes(extractedCity)) {
+                return { type: 'weather', city: knownCity };
+            }
+        }
+        
+        // Check aliases
+        const aliases = Object.keys(CITY_ALIASES);
+        for (const alias of aliases) {
+            if (extractedCity.includes(alias)) {
+                return { type: 'weather', city: alias };
             }
         }
     }
     
-    // Simple weather keyword check
-    if (/(?:cuaca|weather|prakiraan)\s*$/i.test(lower)) {
-        return { type: 'weather', city: null };
-    }
+    // Step 4: Direct city pattern matching (backup)
+    // Try to extract city directly from common patterns
+    const directPatterns = [
+        /(?:cuaca|weather)\s+(?:di\s+)?([a-z\s]+?)(?:\s+(?:hari|sekarang|gimana|bagaimana)|\?|$)/i,
+        /(?:di\s+)?([a-z\s]+?)\s+(?:cuaca|weather)/i,
+        /(?:gimana|bagaimana)\s+(?:cuaca\s+)?(?:di\s+)?([a-z\s]+)/i,
+    ];
     
-    // Check for city name followed by weather word
-    const cityWeatherPattern = /^(.+?)\s+(?:cuaca|weather|hujan|cerah|mendung|panas)/i;
-    const cityMatch = lower.match(cityWeatherPattern);
-    if (cityMatch && cityMatch[1]) {
-        const potentialCity = cityMatch[1].trim();
-        if (getCityCode(potentialCity)) {
-            return { type: 'weather', city: potentialCity };
+    for (const pattern of directPatterns) {
+        const match = lower.match(pattern);
+        if (match && match[1]) {
+            const potentialCity = match[1].trim()
+                .replace(/\b(hari\s*ini|sekarang|besok|gimana|bagaimana|dong|deh|ya)\b/gi, '')
+                .trim();
+            if (potentialCity && getCityCode(potentialCity)) {
+                return { type: 'weather', city: potentialCity };
+            }
         }
     }
     
-    return null;
+    // Step 5: If we detected weather keywords but no valid city, default to Jakarta
+    // This is better UX than failing
+    console.log(`[Weather] No city found in "${message}", defaulting to Jakarta`);
+    return { type: 'weather', city: null }; // Will use jakarta as default
 };
 
 /**

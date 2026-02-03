@@ -445,6 +445,48 @@ describe('WeatherHandler', () => {
             });
         });
 
+        describe('Smart filler word removal (v2.0)', () => {
+            test('should extract jakarta from "cuaca hari ini di jakarta gimana?"', () => {
+                const result = detectWeatherQuery('cuaca hari ini di jakarta gimana?');
+                expect(result).toEqual({ type: 'weather', city: 'jakarta' });
+            });
+
+            test('should extract bandung from "gimana cuaca bandung hari ini dong"', () => {
+                const result = detectWeatherQuery('gimana cuaca bandung hari ini dong');
+                expect(result).toEqual({ type: 'weather', city: 'bandung' });
+            });
+
+            test('should extract surabaya from "cuaca di surabaya sekarang bagaimana ya?"', () => {
+                const result = detectWeatherQuery('cuaca di surabaya sekarang bagaimana ya?');
+                expect(result).toEqual({ type: 'weather', city: 'surabaya' });
+            });
+
+            test('should extract medan from "besok cuaca medan gimana sih"', () => {
+                const result = detectWeatherQuery('besok cuaca medan gimana sih');
+                expect(result).toEqual({ type: 'weather', city: 'medan' });
+            });
+
+            test('should extract jogja from "jogja hujan ga hari ini"', () => {
+                const result = detectWeatherQuery('jogja hujan ga hari ini');
+                expect(result).toEqual({ type: 'weather', city: 'jogja' });
+            });
+
+            test('should default to null (jakarta) when no city found but weather keyword exists', () => {
+                const result = detectWeatherQuery('cuaca hari ini gimana?');
+                expect(result).toEqual({ type: 'weather', city: null });
+            });
+
+            test('should handle "cuaca jakarta besok gimana dong"', () => {
+                const result = detectWeatherQuery('cuaca jakarta besok gimana dong');
+                expect(result).toEqual({ type: 'weather', city: 'jakarta' });
+            });
+
+            test('should handle "prakiraan cuaca di malang hari ini"', () => {
+                const result = detectWeatherQuery('prakiraan cuaca di malang hari ini');
+                expect(result).toEqual({ type: 'weather', city: 'malang' });
+            });
+        });
+
         describe('Earthquake queries', () => {
             test('should detect "info gempa"', () => {
                 const result = detectWeatherQuery('info gempa');

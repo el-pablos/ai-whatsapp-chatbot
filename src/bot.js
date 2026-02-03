@@ -776,6 +776,7 @@ const processMessage = async (msg) => {
         // ═══════════════════════════════════════════════════════════
         // WEATHER CHECK: BMKG weather & earthquake for Indonesia
         // Real-time cuaca dari BMKG Indonesia - 100% accurate official data
+        // Response diproses AI untuk natural formatting
         // ═══════════════════════════════════════════════════════════
         const weatherQuery = detectWeatherQuery(textContent);
         if (weatherQuery) {
@@ -788,16 +789,26 @@ const processMessage = async (msg) => {
             const weatherResponse = await processWeatherRequest(weatherQuery);
             
             if (weatherResponse) {
+                // Get AI to format the response naturally
+                const history = getConversationHistory(sender);
+                const weatherContext = `User bertanya: "${textContent}"\n\nData cuaca/gempa dari BMKG:\n${weatherResponse}`;
+                
+                const aiResponse = await fetchCopilotResponse(
+                    `Berdasarkan data BMKG ini, kasih info cuaca/gempa ke user dengan natural dan informatif. Data sudah akurat, tinggal sampaikan dengan gaya lo:\n\n${weatherContext}`,
+                    history,
+                    { isOwner: senderIsOwner, preferredName, senderPhone }
+                );
+                
                 saveMessage({
                     chatId: sender,
                     senderJid: 'bot',
                     senderName: 'Tama',
                     role: 'assistant',
-                    content: weatherResponse,
+                    content: aiResponse,
                     messageId: `bot_${Date.now()}`
                 });
                 
-                await smartSend(sock, sender, weatherResponse, { quoted: msg });
+                await smartSend(sock, sender, aiResponse, { quoted: msg });
                 await sock.sendPresenceUpdate('paused', sender);
                 return;
             }
