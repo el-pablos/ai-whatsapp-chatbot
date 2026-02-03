@@ -5,9 +5,10 @@
  * - Web search menggunakan DuckDuckGo (free, no API key)
  * - Extract relevant info dari search results
  * - Format hasil untuk chat
+ * - FIXED: Better context analysis to avoid false positives
  * 
  * @author Tama El Pablo
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 const axios = require('axios');
@@ -15,8 +16,57 @@ const axios = require('axios');
 // DuckDuckGo Instant Answer API (free)
 const DDG_API = 'https://api.duckduckgo.com/';
 
+// Words that indicate conversational context, NOT search intent
+const CONVERSATIONAL_WORDS = [
+    'lama', 'lagi', 'aja', 'deh', 'sih', 'dong', 'nih', 'gitu', 'gini',
+    'bisa', 'mau', 'harus', 'perlu', 'butuh', 'sebentar', 'bentar',
+    'gimana', 'gmn', 'kenapa', 'knp', 'kira', 'kira-kira', 'estimasi',
+    'waktu', 'jam', 'menit', 'detik', 'hari', 'minggu', 'bulan', 'tahun',
+    'sekarang', 'nanti', 'tadi', 'kemarin', 'besok', 'kapan'
+];
+
+// Context patterns that indicate conversational questions, not search
+const CONVERSATIONAL_PATTERNS = [
+    /berapa\s+lama/i,  // "berapa lama" = asking about duration
+    /kapan\s+(?:bisa|selesai|jadi|kelar)/i,
+    /gimana\s+(?:caranya|cara|prosesnya)/i,
+    /(?:udah|sudah)\s+(?:jadi|selesai|belum)/i,
+    /(?:masih|tetap|terus)\s+(?:lama|lanjut)/i,
+    /(?:mau|bisa|perlu)\s+(?:brp|berapa)/i,
+    /(?:lu|lo|kamu|elu)\s+(?:bisa|mau|lagi)/i,
+    /(?:gw|gue|w|aku)\s+(?:mau|lagi|pengen)/i
+];
+
+/**
+ * Check if the query is too short or likely conversational
+ * @param {string} query - The extracted query
+ * @returns {boolean} - true if should skip search
+ */
+const isConversationalQuery = (query) => {
+    if (!query) return true;
+    
+    const lowerQuery = query.toLowerCase().trim();
+    
+    // Too short queries are likely conversational
+    if (lowerQuery.length < 4) return true;
+    
+    // Single word that's in conversational list
+    if (!lowerQuery.includes(' ') && CONVERSATIONAL_WORDS.includes(lowerQuery)) {
+        return true;
+    }
+    
+    // Query starts with conversational word
+    const firstWord = lowerQuery.split(/\s+/)[0];
+    if (CONVERSATIONAL_WORDS.includes(firstWord) && lowerQuery.split(/\s+/).length < 3) {
+        return true;
+    }
+    
+    return false;
+};
+
 /**
  * Detect if message is requesting web search
+ * FIXED: Better filtering to avoid false positives like "berapa lama"
  * @param {string} text - Message text
  * @returns {Object|null} - { isSearch, query } or null
  */
@@ -24,16 +74,24 @@ const detectSearchRequest = (text) => {
     if (!text) return null;
     const lowerText = text.toLowerCase();
     
-    // Patterns untuk detect search request
-    const searchPatterns = [
-        /^(?:cari(?:in)?|search|googling?|cek|find)\s+(.+)/i,
-        /(?:apa itu|apakah|siapa|dimana|kapan|berapa|bagaimana)\s+(.+)\??/i,
-        /^(.+)\s+(?:itu apa|apaan|artinya apa)\??$/i
+    // First, check if this is a conversational pattern - skip search
+    for (const pattern of CONVERSATIONAL_PATTERNS) {
+        if (pattern.test(text)) {
+            console.log('[WebSearch] Skipping - detected conversational pattern');
+            return null;
+        }
+    }
+    
+    // Explicit search command patterns (high confidence)
+    const explicitSearchPatterns = [
+        /^(?:\/search|\/cari)\s+(.+)/i,
+        /^(?:search|cari(?:in)?|googling?)\s+(.+)/i,
+        /(?:cari di internet|search di google|googling)\s+(.+)/i
     ];
     
-    for (const pattern of searchPatterns) {
+    for (const pattern of explicitSearchPatterns) {
         const match = text.match(pattern);
-        if (match && match[1]) {
+        if (match && match[1] && match[1].trim().length > 3) {
             return {
                 isSearch: true,
                 query: match[1].trim()
@@ -41,15 +99,36 @@ const detectSearchRequest = (text) => {
         }
     }
     
+    // Question patterns - but with stricter validation
+    const questionPatterns = [
+        /(?:apa itu|apa sih)\s+(.+)\??$/i,
+        /(?:siapa (?:itu|sih))\s+(.+)\??$/i,
+        /^(.+)\s+(?:itu apa|apaan|artinya apa)\??$/i
+    ];
+    
+    for (const pattern of questionPatterns) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+            const query = match[1].trim();
+            // Make sure it's not a conversational query
+            if (!isConversationalQuery(query) && query.length >= 3) {
+                return {
+                    isSearch: true,
+                    query: query
+                };
+            }
+        }
+    }
+    
     // Check for explicit search keywords
-    const explicitKeywords = ['cariin', 'cari di internet', 'cek internet', 'google'];
+    const explicitKeywords = ['cari di internet', 'search di google', 'googling'];
     if (explicitKeywords.some(kw => lowerText.includes(kw))) {
         // Extract query after keyword
         for (const kw of explicitKeywords) {
             const idx = lowerText.indexOf(kw);
             if (idx !== -1) {
                 const query = text.substring(idx + kw.length).trim();
-                if (query.length > 2) {
+                if (query.length > 3 && !isConversationalQuery(query)) {
                     return { isSearch: true, query };
                 }
             }
