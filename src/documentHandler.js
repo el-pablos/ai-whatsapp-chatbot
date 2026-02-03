@@ -829,10 +829,22 @@ const processDocument = async (buffer, filename, mimetype, userRequest = '', his
             analysis
         };
     } catch (error) {
+        console.error('[Document] Full error:', error);
+        
+        // Provide helpful error messages based on error type
+        let errorMessage = error.message;
+        if (error.response?.status === 404) {
+            errorMessage = 'API endpoint tidak ditemukan - pastikan Copilot API running di localhost:4141';
+        } else if (error.code === 'ECONNREFUSED') {
+            errorMessage = 'Copilot API ga bisa diakses - pastikan service nya running';
+        } else if (error.code === 'ETIMEDOUT') {
+            errorMessage = 'Timeout pas connect ke AI - dokumen mungkin terlalu besar';
+        }
+        
         return {
             success: false,
-            error: error.message,
-            analysis: `duh AI nya error bro 😓 ${error.message}`
+            error: errorMessage,
+            analysis: `duh AI nya error bro 😓 ${errorMessage}`
         };
     }
 };
