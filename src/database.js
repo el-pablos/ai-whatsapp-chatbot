@@ -73,6 +73,21 @@ const initDatabase = () => {
         );
     `);
     
+    // Create user preferences table (untuk nyimpan nickname dan setting user)
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            jid TEXT PRIMARY KEY,
+            preferred_name TEXT,
+            language TEXT DEFAULT 'id',
+            response_style TEXT DEFAULT 'gaul',
+            is_owner INTEGER DEFAULT 0,
+            custom_settings TEXT,
+            updated_at INTEGER
+        );
+        
+        CREATE INDEX IF NOT EXISTS idx_user_preferences_jid ON user_preferences(jid);
+    `);
+    
     console.log('[Database] SQLite initialized at', DB_PATH);
     return db;
 };
@@ -380,6 +395,128 @@ const closeDatabase = () => {
     }
 };
 
+// ═══════════════════════════════════════════════════════════
+// USER PREFERENCES FUNCTIONS
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Owner phone numbers (can have multiple)
+ * Format: without country code prefix variations
+ */
+const OWNER_NUMBERS = [
+    '6282210819939',  // With country code
+    '082210819939',   // Without country code
+];
+
+/**
+ * Check if a JID belongs to the owner
+ * @param {string} jid - User's JID (e.g., 6282210819939@s.whatsapp.net)
+ * @returns {boolean}
+ */
+const isOwner = (jid) => {
+    if (!jid) return false;
+    const phoneNumber = jid.replace('@s.whatsapp.net', '').replace('@g.us', '');
+    return OWNER_NUMBERS.some(ownerNum => 
+        phoneNumber === ownerNum || 
+        phoneNumber.endsWith(ownerNum.replace(/^0/, '')) ||
+        ownerNum.endsWith(phoneNumber.replace(/^62/, ''))
+    );
+};
+
+/**
+ * Get user preferences
+ * @param {string} jid - User's JID
+ * @returns {Object|null}
+ */
+const getUserPreferences = (jid) => {
+    const database = initDatabase();
+    
+    const stmt = database.prepare(`
+        SELECT * FROM user_preferences WHERE jid = ?
+    `);
+    
+    const prefs = stmt.get(jid);
+    if (prefs) {
+        prefs.is_owner = isOwner(jid) ? 1 : prefs.is_owner;
+    }
+    return prefs || { jid, is_owner: isOwner(jid) ? 1 : 0 };
+};
+
+/**
+ * Save user preference (e.g., preferred nickname)
+ * @param {string} jid - User's JID  
+ * @param {string} key - Preference key (preferred_name, language, etc.)
+ * @param {any} value - Preference value
+ */
+const saveUserPreference = (jid, key, value) => {
+    const database = initDatabase();
+    
+    const allowedKeys = ['preferred_name', 'language', 'response_style', 'custom_settings'];
+    if (!allowedKeys.includes(key)) {
+        console.error(`[Database] Invalid preference key: ${key}`);
+        return false;
+    }
+    
+    const stmt = database.prepare(`
+        INSERT INTO user_preferences (jid, ${key}, is_owner, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(jid) DO UPDATE SET
+            ${key} = excluded.${key},
+            updated_at = excluded.updated_at
+    `);
+    
+    stmt.run(jid, value, isOwner(jid) ? 1 : 0, Date.now());
+    console.log(`[Database] Saved preference ${key}=${value} for ${jid}`);
+    return true;
+};
+
+/**
+ * Get user's preferred name/nickname
+ * @param {string} jid - User's JID
+ * @param {string} defaultName - Default name to use if no preference
+ * @returns {string}
+ */
+const getPreferredName = (jid, defaultName = 'bro') => {
+    const prefs = getUserPreferences(jid);
+    return prefs?.preferred_name || defaultName;
+};
+
+/**
+ * Detect and save nickname preference from message
+ * Patterns: "panggil gw X", "nama gw X", "call me X"
+ * @param {string} jid - User's JID
+ * @param {string} message - User's message
+ * @returns {string|null} - Detected nickname or null
+ */
+const detectNicknamePreference = (jid, message) => {
+    if (!message) return null;
+    
+    // IMPORTANT: More specific patterns MUST come first to avoid false matches
+    const patterns = [
+        // "jangan panggil gw bro, panggil X" - must be first because it contains "panggil gw"
+        /jangan\s+(?:panggil|sebut)\s+(?:gw|gue|w|aku)\s+bro,?\s*(?:panggil|sebut)?\s*(.+)/i,
+        // "gw mau dipanggil X"
+        /(?:gw|gue|w|aku)\s+(?:mau dipanggil|pengen dipanggil)\s+(.+)/i,
+        // "nama gw X"
+        /(?:nama|name)\s+(?:gw|gue|w|aku|saya)\s+(.+)/i,
+        // "panggil gw X" - more general pattern last
+        /(?:panggil|sebut|call)\s+(?:gw|gue|w|aku|saya|me)\s+(.+)/i,
+    ];
+    
+    for (const pattern of patterns) {
+        const match = message.match(pattern);
+        if (match && match[1]) {
+            const nickname = match[1].trim().replace(/[.,!?]+$/, '').trim();
+            if (nickname.length > 0 && nickname.length < 50) {
+                saveUserPreference(jid, 'preferred_name', nickname);
+                return nickname;
+            }
+        }
+    }
+    
+    return null;
+};
+
 module.exports = {
     initDatabase,
     saveMessage,
@@ -391,5 +528,12 @@ module.exports = {
     getStats,
     getAllUsers,
     cleanupExpiredSessions,
-    closeDatabase
+    closeDatabase,
+    // New exports for user preferences
+    isOwner,
+    getUserPreferences,
+    saveUserPreference,
+    getPreferredName,
+    detectNicknamePreference,
+    OWNER_NUMBERS
 };
