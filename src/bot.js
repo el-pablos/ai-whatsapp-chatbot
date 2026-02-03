@@ -690,32 +690,68 @@ const processMessage = async (msg) => {
 
     // Check for calendar-related queries (natural language)
     // This is checked AFTER mood/tarot to avoid false positives
+    // Response diproses AI untuk natural formatting
     const calendarIntent = detectCalendarIntent(textContent);
     if (calendarIntent) {
-        let calendarResponse = null;
+        let calendarData = null;
         
         // Check if user provided date info in the message
         const parsedDate = parseDateFromString(textContent);
         
         if (calendarIntent.intent === 'zodiac' && parsedDate) {
-            calendarResponse = formatCalendarResponse('zodiac', { 
+            calendarData = formatCalendarResponse('zodiac', { 
                 month: parsedDate.month, 
                 day: parsedDate.day 
             });
         } else if (calendarIntent.intent === 'birthday' && parsedDate && parsedDate.year) {
-            calendarResponse = formatCalendarResponse('birthday', {
+            calendarData = formatCalendarResponse('birthday', {
                 year: parsedDate.year,
                 month: parsedDate.month,
                 day: parsedDate.day
             });
         } else if (calendarIntent.intent === 'calendar') {
-            calendarResponse = formatCalendarResponse('calendar', { month: calendarIntent.month });
+            calendarData = formatCalendarResponse('calendar', { month: calendarIntent.month });
         } else {
-            calendarResponse = formatCalendarResponse(calendarIntent.intent);
+            calendarData = formatCalendarResponse(calendarIntent.intent);
         }
         
-        if (calendarResponse) {
-            await sock.sendMessage(sender, { text: calendarResponse }, { quoted: msg });
+        if (calendarData) {
+            // Save user message
+            saveMessage({
+                chatId: sender,
+                senderJid: sender,
+                senderName: pushName,
+                role: 'user',
+                content: textContent,
+                messageId: messageId
+            });
+            
+            await sock.sendPresenceUpdate('composing', sender);
+            
+            // Get context for AI
+            const senderPhone = sender.split('@')[0];
+            const senderIsOwner = isOwner(sender);
+            const preferredName = getPreferredName(sender, pushName);
+            const history = getConversationHistory(sender);
+            
+            // Let AI format the response naturally
+            const aiResponse = await fetchCopilotResponse(
+                `User bertanya: "${textContent}"\n\nData kalender:\n${calendarData}\n\nSampaikan info ini dengan natural dan helpful, sesuai gaya lo.`,
+                history,
+                { isOwner: senderIsOwner, preferredName, senderPhone }
+            );
+            
+            saveMessage({
+                chatId: sender,
+                senderJid: 'bot',
+                senderName: 'Tama',
+                role: 'assistant',
+                content: aiResponse,
+                messageId: `bot_${Date.now()}`
+            });
+            
+            await smartSend(sock, sender, aiResponse, { quoted: msg });
+            await sock.sendPresenceUpdate('paused', sender);
             return;
         }
     }
