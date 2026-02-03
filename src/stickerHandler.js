@@ -32,12 +32,27 @@ const ensureTempDir = async () => {
 
 /**
  * Detect if message is requesting sticker creation
+ * FIXED: Stricter detection to avoid false positives
+ * Only trigger on EXPLICIT sticker request, not when user mentions "sticker" in passing
  * @param {string} text - Message text
  * @returns {boolean}
  */
 const isStickerRequest = (text) => {
     if (!text) return false;
     const lowerText = text.toLowerCase().trim();
+    
+    // Negative keywords - if these appear, user is NOT asking for sticker
+    const negativeKeywords = [
+        'analisis', 'analisa', 'analyze', 'analysis', 'apa ini', 'apa itu',
+        'lihat', 'liat', 'cek', 'baca', 'jelaskan', 'jelasin', 'describe',
+        'tebak', 'guess', 'foto', 'gambar', 'image', 'picture',
+        'ga bisa', 'gabisa', 'tidak bisa', 'gak bisa', 'cant', "can't"
+    ];
+    
+    // If negative keywords exist, this is NOT a sticker request
+    if (negativeKeywords.some(kw => lowerText.includes(kw))) {
+        return false;
+    }
     
     // Exact match keywords (short ones) - only if caption is exactly this
     const exactKeywords = ['stiker', 'sticker', 'stk'];
@@ -50,7 +65,8 @@ const isStickerRequest = (text) => {
         'jadiin stiker', 'jadiin sticker', 'bikin stiker', 'bikin sticker',
         'buat stiker', 'buat sticker', 'jadi stiker', 'jadi sticker',
         'stiker dong', 'sticker dong', 'stickernya', 'stikernya',
-        'jadikan stiker', 'jadikan sticker'
+        'jadikan stiker', 'jadikan sticker', 'convert to sticker',
+        'jadi kan stiker', 'jadi kan sticker'
     ];
     
     return containsKeywords.some(kw => lowerText.includes(kw));
