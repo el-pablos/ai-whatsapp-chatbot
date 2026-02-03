@@ -1,149 +1,302 @@
 /**
- * Unit Tests - Web Search Handler Module
+ * Unit Tests - Web Search Handler
  * 
  * Test cases untuk validasi:
- * 1. detectSearchRequest with context awareness
- * 2. Avoiding false positives (like "berapa lama" -> searching "lama")
+ * 1. NO-SEARCH GUARD - Should NOT trigger search for conversational chat
+ * 2. EXPLICIT SEARCH - Should trigger search when user explicitly asks
+ * 3. EXTERNAL DATA NEED - Should trigger for time-sensitive data
+ * 4. Edge cases and comprehensive coverage
+ * 
+ * @version 2.0.0
  */
 
 const {
-    detectSearchRequest
+    detectSearchRequest,
+    noSearchGuard,
+    checkExplicitSearchRequest,
+    isInfoQuery
 } = require('../src/webSearchHandler');
 
-describe('Web Search Handler Module', () => {
+describe('Web Search Handler - v2.0 Anti Auto-Search', () => {
 
-    describe('detectSearchRequest', () => {
+    // NO-SEARCH GUARD TESTS - Must NOT trigger search
+    describe('NO-SEARCH GUARD - Should NOT trigger search', () => {
 
-        // ═══════════════════════════════════════════════════════════
-        // Valid Search Requests
-        // ═══════════════════════════════════════════════════════════
-        describe('should detect valid search requests', () => {
-
-            it('should detect explicit "cari" command', () => {
-                const result = detectSearchRequest('cari resep nasi goreng');
-                expect(result).not.toBeNull();
-                expect(result.isSearch).toBe(true);
-                expect(result.query).toBe('resep nasi goreng');
+        describe('Greetings', () => {
+            it('should NOT search for "hai"', () => {
+                expect(detectSearchRequest('hai')).toBeNull();
             });
-
-            it('should detect "/search" command', () => {
-                const result = detectSearchRequest('/search how to code');
-                expect(result).not.toBeNull();
-                expect(result.isSearch).toBe(true);
-                expect(result.query).toBe('how to code');
+            it('should NOT search for "halo"', () => {
+                expect(detectSearchRequest('halo')).toBeNull();
             });
-
-            it('should detect "googling" request', () => {
-                const result = detectSearchRequest('googling tutorial javascript');
-                expect(result).not.toBeNull();
-                expect(result.isSearch).toBe(true);
+            it('should NOT search for "assalamualaikum"', () => {
+                expect(detectSearchRequest('assalamualaikum')).toBeNull();
             });
-
-            it('should detect "apa itu" question', () => {
-                const result = detectSearchRequest('apa itu blockchain');
-                expect(result).not.toBeNull();
-                expect(result.isSearch).toBe(true);
-                expect(result.query).toBe('blockchain');
+            it('should NOT search for "good morning"', () => {
+                expect(detectSearchRequest('good morning')).toBeNull();
             });
-
-            it('should detect "siapa itu" question', () => {
-                const result = detectSearchRequest('siapa itu elon musk');
-                expect(result).not.toBeNull();
-                expect(result.isSearch).toBe(true);
-            });
-
-            it('should detect "X itu apa" pattern', () => {
-                const result = detectSearchRequest('machine learning itu apa');
-                expect(result).not.toBeNull();
-                expect(result.isSearch).toBe(true);
-            });
-
         });
 
-        // ═══════════════════════════════════════════════════════════
-        // Conversational Messages - SHOULD NOT TRIGGER SEARCH
-        // ═══════════════════════════════════════════════════════════
-        describe('should NOT detect conversational messages as search', () => {
-
-            it('should NOT detect "berapa lama" as search for "lama"', () => {
-                const result = detectSearchRequest('berapa lama prosesnya');
-                expect(result).toBeNull();
-            });
-
-            it('should NOT detect "kira kira estimasi berapa lama"', () => {
-                const result = detectSearchRequest('kira kira estimasi berapa lama');
-                expect(result).toBeNull();
-            });
-
-            it('should NOT detect "kapan bisa selesai"', () => {
-                const result = detectSearchRequest('kapan bisa selesai');
-                expect(result).toBeNull();
-            });
-
-            it('should NOT detect "gimana caranya"', () => {
-                const result = detectSearchRequest('gimana caranya');
-                expect(result).toBeNull();
-            });
-
-            it('should NOT detect "udah jadi belum"', () => {
-                const result = detectSearchRequest('udah jadi belum');
-                expect(result).toBeNull();
-            });
-
-            it('should NOT detect simple greetings', () => {
-                expect(detectSearchRequest('halo')).toBeNull();
-                expect(detectSearchRequest('hai bro')).toBeNull();
-            });
-
-            it('should NOT detect short messages', () => {
+        describe('Acknowledgements', () => {
+            it('should NOT search for "ok"', () => {
                 expect(detectSearchRequest('ok')).toBeNull();
+            });
+            it('should NOT search for "oke sip"', () => {
+                expect(detectSearchRequest('oke sip')).toBeNull();
+            });
+            it('should NOT search for "mantap"', () => {
+                expect(detectSearchRequest('mantap')).toBeNull();
+            });
+            it('should NOT search for "makasih"', () => {
+                expect(detectSearchRequest('makasih')).toBeNull();
+            });
+            it('should NOT search for "thanks"', () => {
+                expect(detectSearchRequest('thanks')).toBeNull();
+            });
+        });
+
+        describe('Laughter', () => {
+            it('should NOT search for "wkwk"', () => {
+                expect(detectSearchRequest('wkwk')).toBeNull();
+            });
+            it('should NOT search for "wkwkwk"', () => {
+                expect(detectSearchRequest('wkwkwk')).toBeNull();
+            });
+            it('should NOT search for "haha"', () => {
+                expect(detectSearchRequest('haha')).toBeNull();
+            });
+            it('should NOT search for "lol"', () => {
+                expect(detectSearchRequest('lol')).toBeNull();
+            });
+        });
+
+        describe('Small Talk', () => {
+            it('should NOT search for "apa kabar"', () => {
+                expect(detectSearchRequest('apa kabar')).toBeNull();
+            });
+            it('should NOT search for "gimana kabar"', () => {
+                expect(detectSearchRequest('gimana kabar')).toBeNull();
+            });
+            it('should NOT search for "lagi apa"', () => {
+                expect(detectSearchRequest('lagi apa')).toBeNull();
+            });
+            it('should NOT search for "gimana lu?"', () => {
+                expect(detectSearchRequest('gimana lu?')).toBeNull();
+            });
+            it('should NOT search for "sibuk?"', () => {
+                expect(detectSearchRequest('sibuk?')).toBeNull();
+            });
+        });
+
+        describe('Short Responses', () => {
+            it('should NOT search for "iya"', () => {
                 expect(detectSearchRequest('iya')).toBeNull();
+            });
+            it('should NOT search for "ga"', () => {
                 expect(detectSearchRequest('ga')).toBeNull();
             });
-
-            it('should NOT detect "masih lama ga"', () => {
-                const result = detectSearchRequest('masih lama ga');
-                expect(result).toBeNull();
+            it('should NOT search for "mungkin"', () => {
+                expect(detectSearchRequest('mungkin')).toBeNull();
             });
-
-            it('should NOT detect "gw mau nanya"', () => {
-                const result = detectSearchRequest('gw mau nanya');
-                expect(result).toBeNull();
+            it('should NOT search for "cie"', () => {
+                expect(detectSearchRequest('cie')).toBeNull();
             });
-
         });
 
-        // ═══════════════════════════════════════════════════════════
-        // Edge Cases
-        // ═══════════════════════════════════════════════════════════
-        describe('edge cases', () => {
-
-            it('should return null for empty string', () => {
-                expect(detectSearchRequest('')).toBeNull();
+        describe('Questions About the Bot Itself', () => {
+            it('should NOT search for "lu bisa apa"', () => {
+                expect(detectSearchRequest('lu bisa apa')).toBeNull();
             });
-
-            it('should return null for null/undefined', () => {
-                expect(detectSearchRequest(null)).toBeNull();
-                expect(detectSearchRequest(undefined)).toBeNull();
+            it('should NOT search for "limit lu berapa"', () => {
+                expect(detectSearchRequest('limit lu berapa')).toBeNull();
             });
+            it('should NOT search for "kira kira limit lu berapa se maksimal mungkin nya"', () => {
+                expect(detectSearchRequest('kira kira limit lu berapa se maksimal mungkin nya')).toBeNull();
+            });
+            it('should NOT search for "ya lu limit nya berapa buat bales chat gw ini"', () => {
+                expect(detectSearchRequest('ya lu limit nya berapa buat bales chat gw ini')).toBeNull();
+            });
+        });
 
-            it('should handle mixed case', () => {
-                const result = detectSearchRequest('CARI tutorial React');
+        describe('Conversational Questions', () => {
+            it('should NOT search for "berapa lama ini"', () => {
+                expect(detectSearchRequest('berapa lama ini')).toBeNull();
+            });
+            it('should NOT search for "gimana caranya"', () => {
+                expect(detectSearchRequest('gimana caranya')).toBeNull();
+            });
+            it('should NOT search for "kapan bisa selesai"', () => {
+                expect(detectSearchRequest('kapan bisa selesai')).toBeNull();
+            });
+            it('should NOT search for "menurut lu gimana"', () => {
+                expect(detectSearchRequest('menurut lu gimana')).toBeNull();
+            });
+            it('should NOT search for "apa sih"', () => {
+                expect(detectSearchRequest('apa sih')).toBeNull();
+            });
+        });
+
+        describe('Meta-Conversation', () => {
+            it('should NOT search for "maksud lu apa"', () => {
+                expect(detectSearchRequest('maksud lu apa')).toBeNull();
+            });
+            it('should NOT search for "bisa jelasin"', () => {
+                expect(detectSearchRequest('bisa jelasin')).toBeNull();
+            });
+            it('should NOT search for "bukan searching ke web"', () => {
+                expect(detectSearchRequest('bukan searching ke web')).toBeNull();
+            });
+            it('should NOT search for "jangan search"', () => {
+                expect(detectSearchRequest('jangan search')).toBeNull();
+            });
+        });
+
+        describe('Short Messages', () => {
+            it('should NOT search for "iya bener"', () => {
+                expect(detectSearchRequest('iya bener')).toBeNull();
+            });
+            it('should NOT search for "mantap dah"', () => {
+                expect(detectSearchRequest('mantap dah')).toBeNull();
+            });
+            it('should NOT search for "ok gas"', () => {
+                expect(detectSearchRequest('ok gas')).toBeNull();
+            });
+        });
+
+    });
+
+    // SHOULD TRIGGER SEARCH
+    describe('SHOULD trigger search', () => {
+
+        describe('Explicit Search Commands', () => {
+            it('should trigger for "cari info tentang AI"', () => {
+                const result = detectSearchRequest('cari info tentang AI');
                 expect(result).not.toBeNull();
                 expect(result.isSearch).toBe(true);
             });
 
-            it('should require minimum query length', () => {
-                // Too short queries should not trigger search
-                const result = detectSearchRequest('apa itu a');
-                // If detected, query should be meaningful
-                if (result) {
-                    expect(result.query.length).toBeGreaterThan(2);
-                }
+            it('should trigger for "/search quantum computing"', () => {
+                const result = detectSearchRequest('/search quantum computing');
+                expect(result).not.toBeNull();
+                expect(result.isSearch).toBe(true);
+                expect(result.query).toBe('quantum computing');
             });
 
+            it('should trigger for "googling resep nasi goreng"', () => {
+                const result = detectSearchRequest('googling resep nasi goreng');
+                expect(result).not.toBeNull();
+                expect(result.isSearch).toBe(true);
+            });
+
+            it('should trigger for "cariin harga laptop"', () => {
+                const result = detectSearchRequest('cariin harga laptop');
+                expect(result).not.toBeNull();
+                expect(result.isSearch).toBe(true);
+            });
+
+            it('should trigger for "cari di internet tentang blockchain"', () => {
+                const result = detectSearchRequest('cari di internet tentang blockchain');
+                expect(result).not.toBeNull();
+                expect(result.isSearch).toBe(true);
+            });
         });
 
+        describe('External Data Needs', () => {
+            it('should trigger for "harga bitcoin sekarang berapa"', () => {
+                const result = detectSearchRequest('harga bitcoin sekarang berapa');
+                expect(result).not.toBeNull();
+                expect(result.isSearch).toBe(true);
+            });
+
+            it('should trigger for "cuaca jakarta hari ini"', () => {
+                const result = detectSearchRequest('cuaca jakarta hari ini');
+                expect(result).not.toBeNull();
+                expect(result.isSearch).toBe(true);
+            });
+
+            it('should trigger for "berita terbaru hari ini"', () => {
+                const result = detectSearchRequest('berita terbaru hari ini');
+                expect(result).not.toBeNull();
+                expect(result.isSearch).toBe(true);
+            });
+        });
+
+    });
+
+    // Bug Regression Tests
+    describe('Bug Regression Tests', () => {
+        it('should NOT search for the exact bug case 1', () => {
+            const result = detectSearchRequest('kira kira limit lu berapa se maksimal mungkin nya');
+            expect(result).toBeNull();
+        });
+
+        it('should NOT search for the exact bug case 2', () => {
+            const result = detectSearchRequest('ya lu limit nya berapa buat bales chat gw ini, bukan searching ke web');
+            expect(result).toBeNull();
+        });
+
+        it('should NOT search for "gimana kabar lu?"', () => {
+            expect(detectSearchRequest('gimana kabar lu?')).toBeNull();
+        });
+
+        it('should NOT search for "apa kabar king?"', () => {
+            expect(detectSearchRequest('apa kabar king?')).toBeNull();
+        });
+    });
+
+    // noSearchGuard Tests
+    describe('noSearchGuard function', () => {
+        it('should block empty/null messages', () => {
+            expect(noSearchGuard(null)).toBe(true);
+            expect(noSearchGuard('')).toBe(true);
+        });
+
+        it('should block short messages (<15 chars)', () => {
+            expect(noSearchGuard('hai')).toBe(true);
+            expect(noSearchGuard('oke sip')).toBe(true);
+        });
+
+        it('should NOT block explicit search', () => {
+            expect(noSearchGuard('cari info AI')).toBe(false);
+        });
+
+        it('should block greetings', () => {
+            expect(noSearchGuard('halo gimana kabar')).toBe(true);
+        });
+    });
+
+    // checkExplicitSearchRequest Tests
+    describe('checkExplicitSearchRequest function', () => {
+        it('should detect /search command', () => {
+            const result = checkExplicitSearchRequest('/search test query');
+            expect(result).not.toBeNull();
+            expect(result.query).toBe('test query');
+        });
+
+        it('should return null for non-search', () => {
+            expect(checkExplicitSearchRequest('halo apa kabar')).toBeNull();
+        });
+    });
+
+    // isInfoQuery deprecation
+    describe('isInfoQuery (deprecated)', () => {
+        it('should always return false', () => {
+            expect(isInfoQuery('apa itu blockchain')).toBe(false);
+            expect(isInfoQuery('berapa harga')).toBe(false);
+        });
+    });
+
+    // Edge Cases
+    describe('Edge Cases', () => {
+        it('should handle null', () => {
+            expect(detectSearchRequest(null)).toBeNull();
+        });
+        it('should handle empty string', () => {
+            expect(detectSearchRequest('')).toBeNull();
+        });
+        it('should handle whitespace', () => {
+            expect(detectSearchRequest('   ')).toBeNull();
+        });
     });
 
 });

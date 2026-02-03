@@ -5,10 +5,10 @@
  * - Web search menggunakan DuckDuckGo (free, no API key)
  * - Extract relevant info dari search results
  * - Format hasil untuk chat
- * - FIXED: Better context analysis to avoid false positives
+ * - FIXED v2: Comprehensive NO-SEARCH GUARD to prevent false positive triggers
  * 
  * @author Tama El Pablo
- * @version 1.1.0
+ * @version 2.0.0 - Major fix for auto-search bug
  */
 
 const axios = require('axios');
@@ -16,48 +16,189 @@ const axios = require('axios');
 // DuckDuckGo Instant Answer API (free)
 const DDG_API = 'https://api.duckduckgo.com/';
 
-// Words that indicate conversational context, NOT search intent
-const CONVERSATIONAL_WORDS = [
-    'lama', 'lagi', 'aja', 'deh', 'sih', 'dong', 'nih', 'gitu', 'gini',
-    'bisa', 'mau', 'harus', 'perlu', 'butuh', 'sebentar', 'bentar',
-    'gimana', 'gmn', 'kenapa', 'knp', 'kira', 'kira-kira', 'estimasi',
-    'waktu', 'jam', 'menit', 'detik', 'hari', 'minggu', 'bulan', 'tahun',
-    'sekarang', 'nanti', 'tadi', 'kemarin', 'besok', 'kapan'
+// ═══════════════════════════════════════════════════════════
+// NO-SEARCH GUARD - HARD BLOCK PATTERNS (highest priority)
+// These will NEVER trigger search, no matter what
+// ═══════════════════════════════════════════════════════════
+
+// Greetings - never search
+const GREETING_PATTERNS = [
+    /^(hai|halo|hey|yo|hi|hello|hy|hii|haloo|hallo|assalam|assalamualaikum|salam|pagi|siang|sore|malam|morning|evening)/i,
+    /^(gm|gn|good\s*(morning|night|evening|afternoon))/i,
+    /^(met\s*(pagi|siang|sore|malam))/i
 ];
 
-// Context patterns that indicate conversational questions, not search
-const CONVERSATIONAL_PATTERNS = [
-    /berapa\s+lama/i,  // "berapa lama" = asking about duration
-    /kapan\s+(?:bisa|selesai|jadi|kelar)/i,
-    /gimana\s+(?:caranya|cara|prosesnya)/i,
-    /(?:udah|sudah)\s+(?:jadi|selesai|belum)/i,
-    /(?:masih|tetap|terus)\s+(?:lama|lanjut)/i,
-    /(?:mau|bisa|perlu)\s+(?:brp|berapa)/i,
-    /(?:lu|lo|kamu|elu)\s+(?:bisa|mau|lagi)/i,
-    /(?:gw|gue|w|aku)\s+(?:mau|lagi|pengen)/i
+// Acknowledgements - never search  
+const ACK_PATTERNS = [
+    /^(ok|oke|okey|okay|sip|siap|mantap|gas|bet|iya|yep|yup|yoi|yoa|yow|yes|ya|ye)/i,
+    /^(amin|aminn|aminnn|makasih|thanks|thx|tq|ty|thank you|terima\s*kasih)/i,
+    /^(nah|noh|wah|dah|udah|sudah|done|selesai|kelar)/i,
+    /^(nice|mantul|mantab|keren|gokil|asik|asiik|asyik)/i,
+    /^(noted|siapp|gas\s*lah|otw|lesgo|let'?s?\s*go)/i
+];
+
+// Laughter/Emoji reactions - never search
+// NOTE: Be careful not to match real words like "harga", "handphone", etc.
+const LAUGHTER_PATTERNS = [
+    // Only match pure laughter strings (repeated syllables with nothing else)
+    /^(wk){2,}$/i,           // wkwk, wkwkwk
+    /^(hh){2,}$/i,           // hhhh
+    /^(ha){2,}$/i,           // haha, hahaha
+    /^(he){2,}$/i,           // hehe, hehehe
+    /^(hi){2,}$/i,           // hihi, hihihi
+    /^(ho){2,}$/i,           // hoho, hohoho
+    /^(hu){2,}$/i,           // huhu, huhuhu
+    /^lol+$/i,               // lol, loll
+    /^lmao+$/i,              // lmao
+    /^rofl+$/i,              // rofl
+    /^(kwkw)+$/i,            // kwkwkw
+    /^(xi){2,}$/i,           // xixi, xixixi
+    /^[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]+$/u,
+    /^(😂|😭|🤣|💀|🔥|😅|😆|🙏|👍|👎|❤️|💯|😎|🤔|😤|😡|🥺|😢|😊|🥰|😍)+$/
+];
+
+// Small talk / casual conversation - never search
+const SMALLTALK_PATTERNS = [
+    /^(apa\s*kabar|gmn\s*kabar|gimana\s*kabar|how\s*are\s*you|how'?s?\s*it\s*going)/i,
+    /^(lagi\s*(apa|ngapain|dimana)|lg\s*apa|ngapain|kerja\s*apa)/i,
+    /^(gimana|gmn|gmana)\s*(lu|lo|kamu|elo|u)\??$/i,
+    /^(lu|lo|kamu|elo|u)\s*(gimana|gmn|gmana|lagi\s*apa)\??$/i,
+    /^(sibuk|busy|santai|chill|gabut|bosen|boring)/i,
+    /^(sama|iya\s*juga|gw\s*juga|w\s*juga|me\s*too)/i
+];
+
+// Short confirmations/responses - never search
+const SHORT_RESPONSE_PATTERNS = [
+    /^(iya|ga|gak|engga|enggak|tidak|no|nope|nop|gajadi|batal|cancel)/i,
+    /^(bener|betul|benar|salah|wrong|right)/i,
+    /^(mungkin|maybe|kayanya|kynya|kyknya|sepertinya)/i,
+    /^(cie|ciee|cieee|wkwk|anjir|anjay|asw|asuw|cuk|njir|njay)/i,
+    /^[\?\!\.\,]+$/  // Just punctuation
+];
+
+// Questions about the BOT itself (not external info) - never search
+const BOT_QUESTION_PATTERNS = [
+    /(?:lu|lo|kamu|elo|u|bot|tama)\s*(?:bisa|bs|bsa)\s*(?:apa|ngapain)/i,
+    /(?:fitur|feature|kemampuan|ability)\s*(?:lu|lo|kamu|bot)/i,
+    /(?:lu|lo|kamu|elo|bot)\s*(?:tau|tahu|ngerti|paham)\s*(?:ga|gak|nggak)?\s*(?:soal|tentang)?/i,
+    /(?:limit|batas|maksimal|max)\s*(?:lu|lo|kamu|bot|chat|pesan|response)/i,
+    /(?:lu|lo|kamu|bot)\s*(?:limit|batas|maksimal|max)/i,
+    /berapa\s*(?:limit|batas|max|panjang|karakter)\s*(?:lu|lo|kamu|bot|response|chat|pesan)/i,
+    /(?:lu|lo|kamu|bot)\s*berapa\s*(?:limit|batas|max)/i
+];
+
+// Conversational questions that DON'T need external data - never search
+const CONVERSATIONAL_QUESTION_PATTERNS = [
+    /berapa\s+lama/i,           // "berapa lama"
+    /gimana\s+(?:cara|caranya)/i, // "gimana caranya" 
+    /(?:bisa|bs)\s+(?:ga|gak|nggak)/i,  // "bisa ga"
+    /(?:mau|pengen|pgn)\s+(?:ga|gak|nggak)/i,
+    /(?:udah|sudah|dah)\s+(?:belum|blm)/i,
+    /(?:kapan|when)\s+(?:bisa|selesai|jadi|kelar)/i,
+    /(?:kira|kira-kira|kiranya)\s+.{0,30}$/i,  // "kira-kira..." usually opinion
+    /(?:menurut|mnrt)\s*(?:lu|lo|kamu|u)/i,   // "menurut lu" = asking opinion
+    /(?:saran|advice|tips?)\s*(?:lu|lo|kamu|dong)/i,
+    /(?:recommend|rekomendasi)\s*(?:dong|donk)/i,
+    /^(?:kenapa|knp|why)\s+(?:lu|lo|kamu|gw|w|aku)/i,  // "kenapa lu/gw..."
+    /^(?:apa|apaan)\s+(?:sih|si|seh)/i  // "apa sih" = rhetorical
+];
+
+// Questions ABOUT the current conversation - never search
+const META_CONVERSATION_PATTERNS = [
+    /(?:maksud|mksd)\s*(?:lu|lo|kamu|nya|gw|w)\s*(?:apa|apaan)/i,
+    /(?:bisa|bs)\s*(?:jelasin|jelaskan|explain)/i,
+    /(?:contoh|example)\s*(?:nya|dong|donk)/i,
+    /(?:ulangi|repeat|ulang)\s*(?:dong|donk|lagi)/i,
+    /(?:lebih|more)\s*(?:detail|jelas|spesifik)/i,
+    /(?:singkat|pendek|ringkas|tldr)/i,
+    /bukan\s*(?:search|cari|googling|browsing)/i,  // User explicitly says NOT search
+    /jangan\s*(?:search|cari|googling|browsing)/i
+];
+
+// ═══════════════════════════════════════════════════════════
+// EXPLICIT SEARCH TRIGGERS - Only these should trigger search
+// ═══════════════════════════════════════════════════════════
+
+const EXPLICIT_SEARCH_KEYWORDS = [
+    'cari di internet', 'search di google', 'googling', 'cek di google',
+    'browse', 'browsing', 'cari info', 'cari tau', 'cari tahu',
+    'search for', 'look up', 'lookup', 'find info'
+];
+
+const EXPLICIT_SEARCH_COMMANDS = [
+    /^\/?(search|cari|cariin|googling|browse)\s+(.+)/i,
+    /^(tolong\s*)?(cari(?:in|kan)?|search(?:in)?)\s+(?:di\s+(?:internet|google|web)\s+)?(.+)/i
+];
+
+// ═══════════════════════════════════════════════════════════
+// TIME-SENSITIVE/EXTERNAL DATA PATTERNS (need search)
+// ═══════════════════════════════════════════════════════════
+
+const NEEDS_EXTERNAL_DATA_PATTERNS = [
+    // Weather
+    /(?:cuaca|weather)\s+(?:di\s+)?[a-z]+\s+(?:hari\s+ini|sekarang|besok|minggu\s+ini)/i,
+    /(?:hujan|cerah|panas|dingin)\s+(?:ga|gak|nggak)?\s+(?:di\s+)?[a-z]+/i,
+    
+    // Real-time prices
+    /(?:harga|price)\s+(?:bitcoin|btc|eth|crypto|emas|gold|saham|stock)\s+(?:sekarang|hari\s+ini|terbaru)/i,
+    /(?:bitcoin|btc|eth|dolar|dollar|usd|euro)\s+(?:sekarang|berapa|hari\s+ini)/i,
+    
+    // Current news/events
+    /(?:berita|news)\s+(?:terbaru|hari\s+ini|terkini)/i,
+    /(?:apa\s+yang\s+terjadi|what\s+happened)\s+(?:di|at|in)\s+[a-z]+/i,
+    
+    // Schedules
+    /(?:jadwal|schedule)\s+(?:pertandingan|match|konser|acara)\s+[a-z]+/i,
+    /(?:kapan|when)\s+(?:pertandingan|match|konser|film|movie)\s+[a-z]+/i,
+    
+    // Facts that need verification
+    /^siapa\s+(?:presiden|president|ceo|founder|pendiri)\s+(?:of\s+)?[a-z]+/i,
+    /^(?:dimana|where)\s+(?:lokasi|letak|alamat)\s+[a-z]+/i,
+    
+    // Definitions of SPECIFIC terms (not conversational)
+    /^apa\s+itu\s+[a-z]{4,}\s*\??$/i,  // "apa itu blockchain?"
+    /^[a-z]{4,}\s+(?:itu\s+)?(?:apa|artinya\s+apa)\s*\??$/i  // "blockchain itu apa?"
 ];
 
 /**
- * Check if the query is too short or likely conversational
- * @param {string} query - The extracted query
- * @returns {boolean} - true if should skip search
+ * NO-SEARCH GUARD - First line of defense
+ * Returns true if message should NEVER trigger search
+ * @param {string} text - Message text
+ * @returns {boolean}
  */
-const isConversationalQuery = (query) => {
-    if (!query) return true;
+const noSearchGuard = (text) => {
+    if (!text) return true;
     
-    const lowerQuery = query.toLowerCase().trim();
+    const trimmed = text.trim();
     
-    // Too short queries are likely conversational
-    if (lowerQuery.length < 4) return true;
-    
-    // Single word that's in conversational list
-    if (!lowerQuery.includes(' ') && CONVERSATIONAL_WORDS.includes(lowerQuery)) {
+    // Very short messages (< 15 chars) - almost always conversational
+    if (trimmed.length < 15 && !EXPLICIT_SEARCH_KEYWORDS.some(kw => trimmed.toLowerCase().includes(kw))) {
+        console.log('[WebSearch] GUARD: Message too short (<15 chars), blocking search');
         return true;
     }
     
-    // Query starts with conversational word
-    const firstWord = lowerQuery.split(/\s+/)[0];
-    if (CONVERSATIONAL_WORDS.includes(firstWord) && lowerQuery.split(/\s+/).length < 3) {
+    // Check all hard-block patterns
+    const allBlockPatterns = [
+        ...GREETING_PATTERNS,
+        ...ACK_PATTERNS,
+        ...LAUGHTER_PATTERNS,
+        ...SMALLTALK_PATTERNS,
+        ...SHORT_RESPONSE_PATTERNS,
+        ...BOT_QUESTION_PATTERNS,
+        ...CONVERSATIONAL_QUESTION_PATTERNS,
+        ...META_CONVERSATION_PATTERNS
+    ];
+    
+    for (const pattern of allBlockPatterns) {
+        if (pattern.test(trimmed)) {
+            console.log(`[WebSearch] GUARD: Blocked by pattern ${pattern.toString().substring(0, 50)}...`);
+            return true;
+        }
+    }
+    
+    // Check for "bukan search" / "jangan search" explicit rejection
+    if (/(?:bukan|jangan|ga\s*usah|gak\s*usah)\s*(?:search|cari|googling|browsing)/i.test(trimmed)) {
+        console.log('[WebSearch] GUARD: User explicitly rejected search');
         return true;
     }
     
@@ -65,76 +206,120 @@ const isConversationalQuery = (query) => {
 };
 
 /**
- * Detect if message is requesting web search
- * FIXED: Better filtering to avoid false positives like "berapa lama"
+ * Check if message explicitly requests search
  * @param {string} text - Message text
- * @returns {Object|null} - { isSearch, query } or null
+ * @returns {Object|null} - { query } or null
  */
-const detectSearchRequest = (text) => {
+const checkExplicitSearchRequest = (text) => {
     if (!text) return null;
+    
     const lowerText = text.toLowerCase();
     
-    // First, check if this is a conversational pattern - skip search
-    for (const pattern of CONVERSATIONAL_PATTERNS) {
+    // Check explicit search commands
+    for (const pattern of EXPLICIT_SEARCH_COMMANDS) {
+        const match = text.match(pattern);
+        if (match) {
+            const query = (match[3] || match[2] || '').trim();
+            if (query.length >= 3) {
+                console.log(`[WebSearch] EXPLICIT search request: "${query}"`);
+                return { query, confidence: 1.0, reason: 'explicit_command' };
+            }
+        }
+    }
+    
+    // Check explicit keywords
+    for (const keyword of EXPLICIT_SEARCH_KEYWORDS) {
+        const idx = lowerText.indexOf(keyword);
+        if (idx !== -1) {
+            // Extract query after keyword
+            let query = text.substring(idx + keyword.length).trim();
+            // Also try to get text before keyword if query is empty
+            if (!query || query.length < 3) {
+                const before = text.substring(0, idx).trim();
+                if (before.length >= 3) query = before;
+            }
+            if (query && query.length >= 3) {
+                console.log(`[WebSearch] EXPLICIT keyword "${keyword}" found, query: "${query}"`);
+                return { query, confidence: 0.95, reason: 'explicit_keyword' };
+            }
+        }
+    }
+    
+    return null;
+};
+
+/**
+ * Check if message needs external/time-sensitive data
+ * @param {string} text - Message text
+ * @returns {Object|null} - { query, confidence } or null
+ */
+const checkNeedsExternalData = (text) => {
+    if (!text) return null;
+    
+    for (const pattern of NEEDS_EXTERNAL_DATA_PATTERNS) {
         if (pattern.test(text)) {
-            console.log('[WebSearch] Skipping - detected conversational pattern');
-            return null;
+            // Extract the main query (usually the whole message)
+            const query = text.trim();
+            console.log(`[WebSearch] Needs external data: "${query}"`);
+            return { query, confidence: 0.75, reason: 'external_data_needed' };
         }
     }
     
-    // Explicit search command patterns (high confidence)
-    const explicitSearchPatterns = [
-        /^(?:\/search|\/cari)\s+(.+)/i,
-        /^(?:search|cari(?:in)?|googling?)\s+(.+)/i,
-        /(?:cari di internet|search di google|googling)\s+(.+)/i
-    ];
+    return null;
+};
+
+/**
+ * Main search request detector with comprehensive guards
+ * FIXED: Implements proper NO-SEARCH GUARD and intent hierarchy
+ * 
+ * Priority: CHAT > EXPLICIT_SEARCH > EXTERNAL_NEED
+ * 
+ * @param {string} text - Message text
+ * @param {Array} conversationHistory - Optional conversation context
+ * @returns {Object|null} - { isSearch, query, confidence, reason } or null
+ */
+const detectSearchRequest = (text, conversationHistory = []) => {
+    if (!text) return null;
     
-    for (const pattern of explicitSearchPatterns) {
-        const match = text.match(pattern);
-        if (match && match[1] && match[1].trim().length > 3) {
-            return {
-                isSearch: true,
-                query: match[1].trim()
-            };
-        }
+    console.log(`[WebSearch] Analyzing: "${text.substring(0, 100)}${text.length > 100 ? '...' : ''}"`);
+    
+    // ═══════════════════════════════════════════════════════════
+    // STEP 1: NO-SEARCH GUARD (highest priority)
+    // ═══════════════════════════════════════════════════════════
+    if (noSearchGuard(text)) {
+        console.log('[WebSearch] DECISION: CHAT (blocked by guard)');
+        return null;
     }
     
-    // Question patterns - but with stricter validation
-    const questionPatterns = [
-        /(?:apa itu|apa sih)\s+(.+)\??$/i,
-        /(?:siapa (?:itu|sih))\s+(.+)\??$/i,
-        /^(.+)\s+(?:itu apa|apaan|artinya apa)\??$/i
-    ];
-    
-    for (const pattern of questionPatterns) {
-        const match = text.match(pattern);
-        if (match && match[1]) {
-            const query = match[1].trim();
-            // Make sure it's not a conversational query
-            if (!isConversationalQuery(query) && query.length >= 3) {
-                return {
-                    isSearch: true,
-                    query: query
-                };
-            }
-        }
+    // ═══════════════════════════════════════════════════════════
+    // STEP 2: Check for EXPLICIT search request
+    // ═══════════════════════════════════════════════════════════
+    const explicitSearch = checkExplicitSearchRequest(text);
+    if (explicitSearch) {
+        console.log(`[WebSearch] DECISION: SEARCH (explicit) - confidence: ${explicitSearch.confidence}`);
+        return {
+            isSearch: true,
+            ...explicitSearch
+        };
     }
     
-    // Check for explicit search keywords
-    const explicitKeywords = ['cari di internet', 'search di google', 'googling'];
-    if (explicitKeywords.some(kw => lowerText.includes(kw))) {
-        // Extract query after keyword
-        for (const kw of explicitKeywords) {
-            const idx = lowerText.indexOf(kw);
-            if (idx !== -1) {
-                const query = text.substring(idx + kw.length).trim();
-                if (query.length > 3 && !isConversationalQuery(query)) {
-                    return { isSearch: true, query };
-                }
-            }
-        }
+    // ═══════════════════════════════════════════════════════════
+    // STEP 3: Check if needs external/time-sensitive data
+    // Only trigger if confidence > 0.7
+    // ═══════════════════════════════════════════════════════════
+    const externalData = checkNeedsExternalData(text);
+    if (externalData && externalData.confidence >= 0.7) {
+        console.log(`[WebSearch] DECISION: SEARCH (external need) - confidence: ${externalData.confidence}`);
+        return {
+            isSearch: true,
+            ...externalData
+        };
     }
     
+    // ═══════════════════════════════════════════════════════════
+    // STEP 4: Default to CHAT (no search)
+    // ═══════════════════════════════════════════════════════════
+    console.log('[WebSearch] DECISION: CHAT (default - no search triggers matched)');
     return null;
 };
 
@@ -373,21 +558,15 @@ const parseSearchResults = (ddgResponse) => {
 };
 
 /**
- * Check if query is informational
+ * Check if query is informational (DEPRECATED - use detectSearchRequest instead)
+ * Kept for backwards compatibility but now returns false by default
  */
 const isInfoQuery = (text) => {
-    if (!text) return false;
-    const infoPatterns = [
-        /^apa (itu|yang)/i,
-        /^siapa/i,
-        /^kapan/i,
-        /^dimana/i,
-        /^bagaimana/i,
-        /^mengapa/i,
-        /^kenapa/i,
-        /^berapa/i
-    ];
-    return infoPatterns.some(p => p.test(text));
+    // DEPRECATED: This function was causing false positives
+    // All info query detection is now handled by detectSearchRequest
+    // which has proper guards
+    console.log('[WebSearch] DEPRECATED: isInfoQuery called, returning false');
+    return false;
 };
 
 // Constants
@@ -397,6 +576,9 @@ const MAX_RESULTS = 5;
 
 module.exports = {
     detectSearchRequest,
+    noSearchGuard,
+    checkExplicitSearchRequest,
+    checkNeedsExternalData,
     webSearch,
     searchDuckDuckGo,
     formatSearchResult,
