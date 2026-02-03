@@ -130,6 +130,12 @@ const {
     webSearch,
     formatSearchResult
 } = require('./webSearchHandler');
+const {
+    detectWeatherQuery,
+    processWeatherRequest,
+    getWeather,
+    getLatestEarthquake
+} = require('./weatherHandler');
 
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
@@ -765,6 +771,36 @@ const processMessage = async (msg) => {
             await smartSend(sock, sender, dimensiLainResponse, { quoted: msg });
             await sock.sendPresenceUpdate('paused', sender);
             return;
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // WEATHER CHECK: BMKG weather & earthquake for Indonesia
+        // Real-time cuaca dari BMKG Indonesia - 100% accurate official data
+        // ═══════════════════════════════════════════════════════════
+        const weatherQuery = detectWeatherQuery(textContent);
+        if (weatherQuery) {
+            console.log(`[Bot] Weather/earthquake request detected:`, weatherQuery);
+            
+            await sock.sendMessage(sender, {
+                text: weatherQuery.type === 'earthquake' ? '🔴 bentar ya, w cek info gempa dari BMKG...' : '🌤️ bentar ya, w cek cuaca dari BMKG...'
+            });
+            
+            const weatherResponse = await processWeatherRequest(weatherQuery);
+            
+            if (weatherResponse) {
+                saveMessage({
+                    chatId: sender,
+                    senderJid: 'bot',
+                    senderName: 'Tama',
+                    role: 'assistant',
+                    content: weatherResponse,
+                    messageId: `bot_${Date.now()}`
+                });
+                
+                await smartSend(sock, sender, weatherResponse, { quoted: msg });
+                await sock.sendPresenceUpdate('paused', sender);
+                return;
+            }
         }
 
         // ═══════════════════════════════════════════════════════════
