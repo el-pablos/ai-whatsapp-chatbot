@@ -187,6 +187,7 @@ const parseLocationRequest = (message) => {
 
 /**
  * Handle incoming location message from user
+ * FIXED: Better handling for various Baileys location message formats
  * 
  * @param {Object} locationMsg - Location message from Baileys
  * @returns {Promise<Object>} - Location info with reverse geocoding
@@ -194,33 +195,68 @@ const parseLocationRequest = (message) => {
 const handleIncomingLocation = async (locationMsg) => {
     console.log('[Location] Raw location message:', JSON.stringify(locationMsg, null, 2));
     
-    const lat = locationMsg.degreesLatitude;
-    const lon = locationMsg.degreesLongitude;
+    // Extract coordinates - Baileys may send them in different formats
+    let lat = locationMsg.degreesLatitude;
+    let lon = locationMsg.degreesLongitude;
+    
+    // Alternative field names that Baileys might use
+    if (lat === undefined || lat === null) {
+        lat = locationMsg.latitude || locationMsg.lat;
+    }
+    if (lon === undefined || lon === null) {
+        lon = locationMsg.longitude || locationMsg.lon || locationMsg.lng;
+    }
+    
+    // Convert string to number if needed
+    if (typeof lat === 'string') lat = parseFloat(lat);
+    if (typeof lon === 'string') lon = parseFloat(lon);
     
     console.log(`[Location] Extracted coordinates: lat=${lat}, lon=${lon}`);
     
-    if (!lat || !lon) {
-        console.error('[Location] Invalid coordinates - lat or lon is null/undefined');
+    // Validate coordinates
+    if (lat === undefined || lat === null || lon === undefined || lon === null || isNaN(lat) || isNaN(lon)) {
+        console.error('[Location] Invalid coordinates - lat or lon is null/undefined/NaN');
         return {
             latitude: 0,
             longitude: 0,
             name: 'Unknown Location',
-            address: 'Koordinat tidak tersedia',
+            address: 'Koordinat tidak tersedia - coba share lokasi ulang ya',
             details: null,
-            gmapsUrl: null
+            gmapsUrl: null,
+            error: 'invalid_coordinates'
         };
     }
     
+    // Validate coordinate ranges
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        console.error(`[Location] Coordinates out of range: lat=${lat}, lon=${lon}`);
+        return {
+            latitude: lat,
+            longitude: lon,
+            name: 'Unknown Location',
+            address: 'Koordinat ga valid - kemungkinan data corrupt',
+            details: null,
+            gmapsUrl: null,
+            error: 'out_of_range'
+        };
+    }
+    
+    // Perform reverse geocoding
     const details = await reverseGeocode(lat, lon);
     console.log('[Location] Reverse geocode result:', details?.name?.slice(0, 100));
+    
+    // Get name from location message or reverse geocode
+    const placeName = locationMsg.name || details?.name?.split(',')[0] || 'Lokasi User';
+    const address = locationMsg.address || details?.name || `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
     
     return {
         latitude: lat,
         longitude: lon,
-        name: locationMsg.name || 'Lokasi User',
-        address: locationMsg.address || details?.name || 'Unknown',
+        name: placeName,
+        address: address,
         details,
-        gmapsUrl: `https://www.google.com/maps?q=${lat},${lon}`
+        gmapsUrl: `https://www.google.com/maps?q=${lat},${lon}`,
+        osmUrl: `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}&zoom=17`
     };
 };
 
