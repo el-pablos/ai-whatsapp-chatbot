@@ -5,6 +5,8 @@
  * 1. Fungsi fetchCopilotResponse dengan mock axios
  * 2. Error handling ketika API gagal
  * 3. Validasi persona Tama dalam output
+ * 4. Owner recognition
+ * 5. Smart truncation
  */
 
 const axios = require('axios');
@@ -17,8 +19,12 @@ const {
     fetchCopilotResponse,
     validateTamaPersona,
     getRandomErrorResponse,
+    isOwnerNumber,
+    smartTruncate,
+    MAX_RESPONSE_LENGTH,
     TAMA_SYSTEM_PROMPT,
-    ERROR_RESPONSES
+    ERROR_RESPONSES,
+    OWNER_NUMBERS
 } = require('../src/aiHandler');
 
 describe('AI Handler Module', () => {
@@ -256,6 +262,91 @@ describe('AI Handler Module', () => {
                 // Each error response should have at least some Tama flavor
                 expect(validation.tamaKeywordsFound.length + (validation.hasEmoji ? 1 : 0)).toBeGreaterThan(0);
             });
+        });
+
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // NEW TESTS: Owner Recognition
+    // ═══════════════════════════════════════════════════════════
+    describe('isOwnerNumber', () => {
+
+        it('should return true for owner phone number with country code', () => {
+            expect(isOwnerNumber('6282210819939')).toBe(true);
+        });
+
+        it('should return true for owner phone number without country code', () => {
+            expect(isOwnerNumber('082210819939')).toBe(true);
+        });
+
+        it('should return true for owner JID format', () => {
+            expect(isOwnerNumber('6282210819939@s.whatsapp.net')).toBe(true);
+        });
+
+        it('should return false for non-owner number', () => {
+            expect(isOwnerNumber('6281234567890')).toBe(false);
+            expect(isOwnerNumber('6289999999999')).toBe(false);
+        });
+
+        it('should return false for null/undefined', () => {
+            expect(isOwnerNumber(null)).toBe(false);
+            expect(isOwnerNumber(undefined)).toBe(false);
+            expect(isOwnerNumber('')).toBe(false);
+        });
+
+    });
+
+    describe('OWNER_NUMBERS', () => {
+
+        it('should contain owner phone numbers', () => {
+            expect(OWNER_NUMBERS).toContain('6282210819939');
+            expect(OWNER_NUMBERS).toContain('082210819939');
+        });
+
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // NEW TESTS: Smart Truncation
+    // ═══════════════════════════════════════════════════════════
+    describe('smartTruncate', () => {
+
+        it('should return original text if under max length', () => {
+            const shortText = 'ini text pendek';
+            expect(smartTruncate(shortText)).toBe(shortText);
+        });
+
+        it('should truncate long text with truncation notice', () => {
+            const longText = 'a'.repeat(5000);
+            const result = smartTruncate(longText);
+            expect(result.length).toBeLessThan(longText.length);
+            expect(result).toContain('dipotong');
+        });
+
+        it('should try to break at sentence boundaries', () => {
+            const text = 'Paragraf pertama. ' + 'x'.repeat(4000) + ' Paragraf kedua.';
+            const result = smartTruncate(text);
+            // Should end with truncation message
+            expect(result).toContain('dipotong');
+        });
+
+        it('should handle null/empty input', () => {
+            expect(smartTruncate(null)).toBeNull();
+            expect(smartTruncate('')).toBe('');
+        });
+
+        it('should respect custom max length', () => {
+            const text = 'a'.repeat(1000);
+            const result = smartTruncate(text, 500);
+            expect(result.length).toBeLessThan(text.length);
+        });
+
+    });
+
+    describe('MAX_RESPONSE_LENGTH', () => {
+
+        it('should be a reasonable number', () => {
+            expect(MAX_RESPONSE_LENGTH).toBeGreaterThan(1000);
+            expect(MAX_RESPONSE_LENGTH).toBeLessThan(65536); // WhatsApp limit
         });
 
     });

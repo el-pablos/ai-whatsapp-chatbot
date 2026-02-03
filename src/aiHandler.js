@@ -20,6 +20,24 @@ const axios = require('axios');
 const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141';
 const COPILOT_API_MODEL = process.env.COPILOT_API_MODEL || 'claude-sonnet-4.5';
 
+// Owner phone numbers for recognition
+const OWNER_NUMBERS = ['6282210819939', '082210819939'];
+
+/**
+ * Check if phone number belongs to owner
+ * @param {string} phoneNumber - Phone number to check
+ * @returns {boolean}
+ */
+const isOwnerNumber = (phoneNumber) => {
+    if (!phoneNumber) return false;
+    const cleaned = phoneNumber.replace('@s.whatsapp.net', '').replace('@g.us', '');
+    return OWNER_NUMBERS.some(ownerNum => 
+        cleaned === ownerNum || 
+        cleaned.endsWith(ownerNum.replace(/^0/, '')) ||
+        ownerNum.endsWith(cleaned.replace(/^62/, ''))
+    );
+};
+
 /**
  * System Prompt yang mendefinisikan persona "Tama AI" secara mendetail
  * Diekstrak dari data percakapan asli (data bahasa penyampaian tamas.txt, data2.txt, data3.txt)
@@ -46,6 +64,23 @@ INFORMASI OWNER/AUTHOR BOT INI:
 - Instagram owner: tam.aspx
 - Kalau ada yang nanya siapa yang buat bot ini: "yang buat w tuh Tama El Pablo, dia owner sekaligus creator w"
 - Kalau ada yang minta kontak owner: "WA nya 082210819939, IG nya tam.aspx"
+
+═══════════════════════════════════════════════════════════
+OWNER RECOGNITION (PENTING!):
+═══════════════════════════════════════════════════════════
+- Jika ada [OWNER: true] di awal pesan, berarti yang chat ADALAH Tama El Pablo sendiri (owner/creator kamu)
+- Sapa dia dengan hormat tapi tetep santai: "eh king tama!", "siap boss!", "uwoh owner ku!"
+- JANGAN PERNAH bilang "Tama ke dimensi lain" atau "Tama ga ada" kalau owner sendiri yang chat
+- Kalau owner bilang "gw Tama" atau "ini Tama", LANGSUNG percaya dan acknowledge: "oh iya king, my bad!"
+- Treat owner dengan respect tapi tetep gaul, panggil "king", "boss", atau nama custom yang dia mau
+
+═══════════════════════════════════════════════════════════
+USER NICKNAME PREFERENCES:
+═══════════════════════════════════════════════════════════
+- Jika ada [PANGGILAN: xxx] di pesan, SELALU gunakan panggilan itu, JANGAN pakai "bro" atau panggilan lain
+- Contoh: [PANGGILAN: king tama] berarti panggil "king tama", bukan "bro"
+- Ingat panggilan ini sepanjang percakapan
+- Kalau user minta ganti panggilan, langsung ganti dan konfirmasi
 
 ═══════════════════════════════════════════════════════════
 GAYA BICARA TAMA (EXTRACTED FROM REAL WHATSAPP CHATS):
@@ -250,18 +285,36 @@ const getRandomErrorResponse = () => {
  * @param {Object} options - Additional options
  * @param {string} options.quotedContent - Content yang di-reply user
  * @param {string} options.mediaDescription - Deskripsi media yang dikirim
+ * @param {boolean} options.isOwner - Whether the sender is the owner
+ * @param {string} options.preferredName - User's preferred nickname
+ * @param {string} options.senderPhone - Sender's phone number for owner detection
  * @returns {Promise<string>} - Response dari AI dengan gaya Tama
  */
 const fetchCopilotResponse = async (userMessage, conversationHistory = [], options = {}) => {
-    const { quotedContent, mediaDescription } = options;
+    const { quotedContent, mediaDescription, isOwner: ownerFlag, preferredName, senderPhone } = options;
+    
+    // Check if sender is owner
+    const senderIsOwner = ownerFlag || isOwnerNumber(senderPhone);
     
     try {
-        // Build context-aware message
-        let contextualMessage = userMessage;
+        // Build context-aware message with owner/nickname context
+        let contextualMessage = '';
+        
+        // Add owner context if applicable
+        if (senderIsOwner) {
+            contextualMessage += '[OWNER: true] ';
+        }
+        
+        // Add nickname preference if set
+        if (preferredName && preferredName !== 'bro') {
+            contextualMessage += `[PANGGILAN: ${preferredName}] `;
+        }
+        
+        contextualMessage += userMessage;
         
         // Add quoted message context
         if (quotedContent) {
-            contextualMessage = `[User membalas pesan: "${quotedContent}"]\n\n${userMessage}`;
+            contextualMessage = `[User membalas pesan: "${quotedContent}"]\n\n${contextualMessage}`;
         }
         
         // Add media context
@@ -287,7 +340,7 @@ const fetchCopilotResponse = async (userMessage, conversationHistory = [], optio
                 model: COPILOT_API_MODEL,
                 messages: messages,
                 temperature: 0.85, // Sedikit lebih kreatif untuk natural response
-                max_tokens: 8192 // Unlimited-style: biar response ga kepotong
+                max_tokens: 4096 // Reasonable limit to avoid super long responses
             },
             {
                 headers: {
@@ -298,7 +351,8 @@ const fetchCopilotResponse = async (userMessage, conversationHistory = [], optio
         );
 
         if (response.data && response.data.choices && response.data.choices[0]) {
-            return response.data.choices[0].message.content;
+            // Apply smart truncation to avoid too long responses
+            return smartTruncate(response.data.choices[0].message.content);
         }
 
         return getRandomErrorResponse();
@@ -316,20 +370,52 @@ const fetchCopilotResponse = async (userMessage, conversationHistory = [], optio
     }
 };
 
+// Max response length to prevent WhatsApp message cutoff
+const MAX_RESPONSE_LENGTH = 4000; // WhatsApp limit is 65536 but keep it concise
+
+/**
+ * Truncate response if too long, with smart truncation
+ * @param {string} response - AI response
+ * @param {number} maxLength - Maximum length
+ * @returns {string} - Truncated response
+ */
+const smartTruncate = (response, maxLength = MAX_RESPONSE_LENGTH) => {
+    if (!response || response.length <= maxLength) return response;
+    
+    // Find a good break point (end of sentence/paragraph)
+    const breakPoints = ['\n\n', '\n', '. ', '! ', '? '];
+    
+    for (const breakPoint of breakPoints) {
+        const lastBreak = response.lastIndexOf(breakPoint, maxLength - 100);
+        if (lastBreak > maxLength * 0.7) {
+            return response.substring(0, lastBreak + breakPoint.length) + 
+                   '\n\n_[Response dipotong karena kepanjangan - tanya lebih spesifik buat detail]_';
+        }
+    }
+    
+    // Hard truncate if no good break point
+    return response.substring(0, maxLength - 50) + 
+           '...\n\n_[Response dipotong - tanya lebih spesifik buat detail]_';
+};
+
 /**
  * Fetch response dengan vision (untuk gambar)
+ * FIXED: Added retry logic for image analysis errors
  * 
  * @param {string} base64Image - Base64 encoded image
  * @param {string} mimetype - Image mimetype
  * @param {string} userCaption - Caption dari user
  * @param {Array} conversationHistory - Chat history
+ * @param {number} retryCount - Current retry attempt
  * @returns {Promise<string>} - AI response
  */
-const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conversationHistory = []) => {
+const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conversationHistory = [], retryCount = 0) => {
+    const MAX_RETRIES = 2;
+    
     try {
         const visionPrompt = userCaption 
-            ? `User kirim gambar dengan caption: "${userCaption}". Lihat dan responlah.`
-            : 'User kirim gambar ini. Lihat dan kasih respons ya.';
+            ? `User kirim gambar dengan caption: "${userCaption}". Lihat dan responlah secara SINGKAT dan padat.`
+            : 'User kirim gambar ini. Lihat dan kasih respons SINGKAT ya.';
 
         // Format untuk OpenAI-compatible API (menggunakan image_url dengan data URL)
         const imageDataUrl = `data:${mimetype};base64,${base64Image}`;
@@ -337,9 +423,9 @@ const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conv
         const messages = [
             {
                 role: 'system',
-                content: TAMA_SYSTEM_PROMPT
+                content: TAMA_SYSTEM_PROMPT + '\n\nPENTING: Kasih respons yang SINGKAT dan PADAT, maksimal 2-3 paragraf. Jangan bertele-tele.'
             },
-            ...conversationHistory,
+            ...conversationHistory.slice(-5), // Limit history to avoid token overflow
             {
                 role: 'user',
                 content: [
@@ -363,22 +449,45 @@ const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conv
                 model: COPILOT_API_MODEL,
                 messages: messages,
                 temperature: 0.85,
-                max_tokens: 8192 // Unlimited-style biar ga kepotong
+                max_tokens: 2048 // Limit response length
             },
             {
                 headers: { 'Content-Type': 'application/json' },
-                timeout: 120000 // 2 menit untuk vision analysis
+                timeout: 90000 // 90 seconds for vision
             }
         );
 
         if (response.data?.choices?.[0]?.message?.content) {
-            return response.data.choices[0].message.content;
+            return smartTruncate(response.data.choices[0].message.content);
         }
 
         return 'duh ga bisa liat gambar nya nih jir 😓';
         
     } catch (error) {
         console.error('[AI Handler] Vision error:', error.message);
+        
+        // Retry logic for transient errors
+        if (retryCount < MAX_RETRIES) {
+            const isRetryable = error.code === 'ECONNRESET' || 
+                               error.code === 'ETIMEDOUT' || 
+                               error.response?.status === 429 ||
+                               error.response?.status >= 500;
+            
+            if (isRetryable) {
+                console.log(`[AI Handler] Retrying vision request (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+                await new Promise(r => setTimeout(r, 2000 * (retryCount + 1))); // Exponential backoff
+                return fetchVisionResponse(base64Image, mimetype, userCaption, conversationHistory, retryCount + 1);
+            }
+        }
+        
+        // Different error messages based on error type
+        if (error.response?.status === 413) {
+            return 'duh gambar nya kegedean bro 😓 coba kirim yang lebih kecil';
+        }
+        if (error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+            return 'aduh timeout pas proses gambar 😭 coba kirim ulang ya';
+        }
+        
         return 'aduh error pas liat gambar 😭 coba kirim ulang bro';
     }
 };
@@ -494,7 +603,20 @@ const getDimensiLainResponse = () => {
  * @param {string} message - Pesan user
  * @returns {string|null} - Respons hardcoded jika kondisi terpenuhi, null jika tidak
  */
-const checkDimensiLainLogic = (message) => {
+/**
+ * Check dan handle temporal logic untuk pertanyaan author
+ * UPDATED: Skip if sender is owner (don't tell owner they're in another dimension!)
+ * @param {string} message - Pesan user
+ * @param {string} senderPhone - Sender's phone number
+ * @returns {string|null} - Respons hardcoded jika kondisi terpenuhi, null jika tidak
+ */
+const checkDimensiLainLogic = (message, senderPhone = null) => {
+    // If sender is owner, NEVER return "dimensi lain" response
+    if (senderPhone && isOwnerNumber(senderPhone)) {
+        console.log('[AI] Skipping Dimensi Lain logic - sender is owner!');
+        return null;
+    }
+    
     if (isDimensiLainPeriod() && isAuthorQuestion(message)) {
         console.log('[AI] Triggered: Dimensi Lain temporal logic (3-7 Feb 2026)');
         return getDimensiLainResponse();
@@ -511,8 +633,12 @@ module.exports = {
     checkDimensiLainLogic,
     isDimensiLainPeriod,
     isAuthorQuestion,
+    isOwnerNumber,
+    smartTruncate,
+    MAX_RESPONSE_LENGTH,
     TAMA_SYSTEM_PROMPT,
     ERROR_RESPONSES,
     COPILOT_API_URL,
-    COPILOT_API_MODEL
+    COPILOT_API_MODEL,
+    OWNER_NUMBERS
 };
