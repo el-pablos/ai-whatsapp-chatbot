@@ -47,7 +47,11 @@ const {
     saveMessage, 
     getConversationHistory, 
     getMessageById,
-    closeDatabase 
+    closeDatabase,
+    isOwner,
+    getUserPreferences,
+    getPreferredName,
+    detectNicknamePreference
 } = require('./database');
 const { 
     downloadMedia, 
@@ -724,14 +728,28 @@ const processMessage = async (msg) => {
 
     // Send typing indicator
     await sock.sendPresenceUpdate('composing', sender);
+    
+    // Get sender phone and check if owner
+    const senderPhone = sender.split('@')[0];
+    const senderIsOwner = isOwner(sender);
+    
+    // Check for nickname preference in message
+    const detectedNickname = detectNicknamePreference(sender, textContent);
+    if (detectedNickname) {
+        console.log(`[Bot] Detected nickname preference: "${detectedNickname}" for ${sender}`);
+    }
+    
+    // Get user's preferred name
+    const preferredName = getPreferredName(sender, pushName);
 
     try {
         // ═══════════════════════════════════════════════════════════
         // TEMPORAL LOGIC CHECK: "Dimensi Lain" (3-7 Feb 2026)
         // Jika user tanya tentang author/owner dalam periode ini,
         // bypass AI dan kirim respons hardcoded
+        // SKIP if sender is owner!
         // ═══════════════════════════════════════════════════════════
-        const dimensiLainResponse = checkDimensiLainLogic(textContent);
+        const dimensiLainResponse = checkDimensiLainLogic(textContent, senderPhone);
         if (dimensiLainResponse) {
             console.log(`[Bot] Temporal response (Dimensi Lain) untuk ${pushName}`);
             
@@ -774,7 +792,7 @@ const processMessage = async (msg) => {
                 const aiResponse = await fetchCopilotResponse(
                     `berdasarkan hasil pencarian ini, kasih rangkuman yang informatif dan helpful untuk user:\n\n${searchContext}`,
                     history,
-                    { searchResults: searchResult }
+                    { searchResults: searchResult, isOwner: senderIsOwner, preferredName, senderPhone }
                 );
                 
                 saveMessage({
@@ -790,9 +808,9 @@ const processMessage = async (msg) => {
                 await sock.sendPresenceUpdate('paused', sender);
                 return;
             } else {
-                // No results, tell user
+                // No results, tell user - use preferred name
                 await sock.sendMessage(sender, {
-                    text: `ga nemu apa2 bro soal "${searchRequest.query}" 😅 coba kata kunci lain deh`
+                    text: `ga nemu apa2 ${preferredName} soal "${searchRequest.query}" 😅 coba kata kunci lain deh`
                 }, { quoted: msg });
                 await sock.sendPresenceUpdate('paused', sender);
                 return;
@@ -808,15 +826,18 @@ const processMessage = async (msg) => {
         // Start thinking indicator if response takes > 5 seconds
         thinking.startAfterDelay(5000, '💭 *bntar ya w lagi mikir...*');
         
-        // Fetch AI response with context
+        // Fetch AI response with context including owner status and preferred name
         const aiResponse = await fetchCopilotResponse(textContent, history, {
-            quotedContent: quotedContent
+            quotedContent: quotedContent,
+            isOwner: senderIsOwner,
+            preferredName: preferredName,
+            senderPhone: senderPhone
         });
         
         // Cancel thinking indicator (response received)
         thinking.cancel();
 
-        console.log(`[Bot] Response untuk ${pushName}: ${aiResponse.slice(0, 100)}...`);
+        console.log(`[Bot] Response untuk ${pushName} (owner: ${senderIsOwner}): ${aiResponse.slice(0, 100)}...`);
 
         // Save AI response to database
         saveMessage({
