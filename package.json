@@ -27,7 +27,7 @@
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
-    "axios": "^1.13.4",
+    "axios": "^1.13.5",
     "better-sqlite3": "^12.6.2",
     "decompress": "^4.2.1",
     "decompress-tarbz2": "^4.1.1",
