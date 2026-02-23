@@ -749,10 +749,10 @@ RULES:
                 userMessage = `Lanjutan dokumen "${filename}"${chunkInfo}:\n\n===== LANJUTAN =====\n${chunks[i]}\n===== END =====\n\nLanjutkan analisis.`;
             }
 
-            // Only include history for first chunk to avoid context overflow
+            // Skip conversation history for document analysis to avoid context overflow
+            // The document content itself provides sufficient context
             const messages = [
                 { role: 'system', content: systemPrompt },
-                ...(i === 0 ? history.slice(-3).map(h => ({ role: h.role, content: h.content })) : []),
                 { role: 'user', content: userMessage }
             ];
 

@@ -286,7 +286,7 @@ describe('documentHandler - Universal Document Reader', () => {
             ).rejects.toThrow('Gagal menganalisis dokumen dengan AI');
         });
 
-        it('should include chat history in context', async () => {
+        it('should NOT include chat history to avoid context overflow', async () => {
             axios.post.mockResolvedValue({
                 data: {
                     choices: [{
@@ -303,7 +303,10 @@ describe('documentHandler - Universal Document Reader', () => {
             await analyzeDocumentWithAI('doc content', 'file.pdf', '', history);
 
             const callArgs = axios.post.mock.calls[0][1];
-            expect(callArgs.messages.length).toBeGreaterThan(2);
+            // Should only have system + user messages (no history) to prevent 500 errors
+            expect(callArgs.messages.length).toBe(2);
+            expect(callArgs.messages[0].role).toBe('system');
+            expect(callArgs.messages[1].role).toBe('user');
         });
 
         it('should use Tama persona in system prompt', async () => {

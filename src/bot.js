@@ -1404,6 +1404,12 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
             
             const history = getConversationHistory(sender);
             const result = await processDocument(buffer, filename, mimetype, caption, history, onProgress);
+            
+            // If document analysis failed, report bug to owner
+            if (!result.success) {
+                await reportBugToOwner(sock, sender, pushName, result.error || result.analysis, `Document Analysis: ${filename}`, msg);
+            }
+            
             aiResponse = result.analysis;
         }
         // Handle other documents
