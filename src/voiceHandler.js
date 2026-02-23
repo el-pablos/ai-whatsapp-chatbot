@@ -152,8 +152,7 @@ const transcribeWithBase64 = async (audioBuffer) => {
                         }
                     ]
                 }
-            ],
-            max_tokens: 1000
+            ]
         },
         { timeout: 60000 }
     );

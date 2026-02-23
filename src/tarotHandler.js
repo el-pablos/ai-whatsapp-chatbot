@@ -820,8 +820,7 @@ PENTING: Analisis dengan DEPTH tapi sampaikan dengan gaya santai.`;
                     ...conversationHistory.slice(-3),
                     { role: 'user', content: prompt }
                 ],
-                temperature: 0.8,
-                max_tokens: 4096 // Longer for detailed mystical interpretations
+                temperature: 0.8
             },
             {
                 headers: { 'Content-Type': 'application/json' },

@@ -141,8 +141,7 @@ Analisis dengan empati dan perhatian. Jangan judgemental.`;
             {
                 model: COPILOT_API_MODEL,
                 messages: messages,
-                temperature: 0.7,
-                max_tokens: 600
+                temperature: 0.7
             },
             {
                 headers: { 'Content-Type': 'application/json' },

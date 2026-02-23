@@ -339,8 +339,7 @@ const fetchCopilotResponse = async (userMessage, conversationHistory = [], optio
             {
                 model: COPILOT_API_MODEL,
                 messages: messages,
-                temperature: 0.85, // Sedikit lebih kreatif untuk natural response
-                max_tokens: 4096 // Reasonable limit to avoid super long responses
+                temperature: 0.85
             },
             {
                 headers: {
@@ -351,8 +350,7 @@ const fetchCopilotResponse = async (userMessage, conversationHistory = [], optio
         );
 
         if (response.data && response.data.choices && response.data.choices[0]) {
-            // Apply smart truncation to avoid too long responses
-            return smartTruncate(response.data.choices[0].message.content);
+            return response.data.choices[0].message.content;
         }
 
         return getRandomErrorResponse();
@@ -371,7 +369,7 @@ const fetchCopilotResponse = async (userMessage, conversationHistory = [], optio
 };
 
 // Max response length to prevent WhatsApp message cutoff
-const MAX_RESPONSE_LENGTH = 4000; // WhatsApp limit is 65536 but keep it concise
+const MAX_RESPONSE_LENGTH = 60000; // WhatsApp limit is 65536, keep some margin
 
 /**
  * Truncate response if too long, with smart truncation
@@ -448,8 +446,7 @@ const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conv
             {
                 model: COPILOT_API_MODEL,
                 messages: messages,
-                temperature: 0.85,
-                max_tokens: 2048 // Limit response length
+                temperature: 0.85
             },
             {
                 headers: { 'Content-Type': 'application/json' },
@@ -458,7 +455,7 @@ const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conv
         );
 
         if (response.data?.choices?.[0]?.message?.content) {
-            return smartTruncate(response.data.choices[0].message.content);
+            return response.data.choices[0].message.content;
         }
 
         return 'duh ga bisa liat gambar nya nih jir 😓';

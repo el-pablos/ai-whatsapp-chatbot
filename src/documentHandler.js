@@ -657,7 +657,7 @@ const analyzeDocumentWithAI = async (text, filename, userRequest = '', history =
     try {
         // Split into chunks if very large (for API token management)
         const chunks = [];
-        const CHUNK_SIZE = 100000; // 100k chars per chunk for processing
+        const CHUNK_SIZE = 15000; // 15k chars per chunk (~4-5k tokens) to stay safely within context window
         
         if (text.length > CHUNK_SIZE) {
             for (let i = 0; i < text.length; i += CHUNK_SIZE) {
@@ -722,21 +722,39 @@ RULES:
                 userMessage = `Lanjutan dokumen "${filename}"${chunkInfo}:\n\n===== LANJUTAN =====\n${chunks[i]}\n===== END =====\n\nLanjutkan analisis.`;
             }
 
+            // Only include history for first chunk to avoid context overflow
             const messages = [
                 { role: 'system', content: systemPrompt },
-                ...history.slice(-3).map(h => ({ role: h.role, content: h.content })),
+                ...(i === 0 ? history.slice(-3).map(h => ({ role: h.role, content: h.content })) : []),
                 { role: 'user', content: userMessage }
             ];
 
-            const response = await axios.post(`${COPILOT_API_URL}/v1/chat/completions`, {
-                model: COPILOT_API_MODEL,
-                messages,
-                max_tokens: 8192, // Unlimited-style biar ga kepotong
-                temperature: 0.7
-            }, {
-                timeout: 300000, // 5 minutes for very large docs
-                headers: { 'Content-Type': 'application/json' }
-            });
+            // Retry logic with exponential backoff
+            let response;
+            const MAX_RETRIES = 3;
+            for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+                try {
+                    response = await axios.post(`${COPILOT_API_URL}/v1/chat/completions`, {
+                        model: COPILOT_API_MODEL,
+                        messages,
+                        temperature: 0.7
+                    }, {
+                        timeout: 300000, // 5 minutes for very large docs
+                        headers: { 'Content-Type': 'application/json' }
+                    });
+                    break; // Success, exit retry loop
+                } catch (retryError) {
+                    const status = retryError.response?.status;
+                    console.error(`[Document] Chunk ${i + 1}/${chunks.length} attempt ${attempt + 1} failed: ${retryError.message}`);
+                    if (attempt < MAX_RETRIES - 1 && (status === 500 || status === 429 || status === 502 || status === 503)) {
+                        const delay = Math.pow(2, attempt + 1) * 2000; // 4s, 8s, 16s
+                        console.log(`[Document] Retrying in ${delay / 1000}s...`);
+                        await new Promise(r => setTimeout(r, delay));
+                    } else {
+                        throw retryError;
+                    }
+                }
+            }
 
             fullAnalysis += response.data.choices[0].message.content;
             
@@ -755,6 +773,8 @@ RULES:
             
             if (i < chunks.length - 1) {
                 fullAnalysis += '\n\n---\n\n';
+                // Delay between chunks to avoid rate limiting
+                await new Promise(r => setTimeout(r, 2000));
             }
         }
 

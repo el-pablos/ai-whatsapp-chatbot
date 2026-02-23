@@ -110,11 +110,14 @@ const getExtension = (msg) => {
 
 /**
  * Get caption from media message
+ * Checks all possible caption locations including wrapped messages
  */
 const getMediaCaption = (msg) => {
     return msg.message?.imageMessage?.caption ||
            msg.message?.videoMessage?.caption ||
            msg.message?.documentMessage?.caption ||
+           msg.message?.documentWithCaptionMessage?.message?.documentMessage?.caption ||
+           msg.message?.extendedTextMessage?.text ||
            '';
 };
 
@@ -183,8 +186,7 @@ const analyzeImage = async (imageBuffer, mimetype, userPrompt = '', conversation
             {
                 model: COPILOT_API_MODEL,
                 messages: messages,
-                temperature: 0.8,
-                max_tokens: 1000
+                temperature: 0.8
             },
             {
                 headers: {
@@ -303,8 +305,7 @@ Kalau ga ada wajah di foto, bilang aja "eh ini ga ada muka nya bro 😭"`;
             {
                 model: COPILOT_API_MODEL,
                 messages: messages,
-                temperature: 0.9,
-                max_tokens: 500
+                temperature: 0.9
             },
             {
                 headers: { 'Content-Type': 'application/json' },
@@ -333,6 +334,7 @@ const hasMedia = (msg) => {
         msg.message?.videoMessage ||
         msg.message?.audioMessage ||
         msg.message?.documentMessage ||
+        msg.message?.documentWithCaptionMessage ||
         msg.message?.stickerMessage
     );
 };

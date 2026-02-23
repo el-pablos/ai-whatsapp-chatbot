@@ -554,6 +554,28 @@ const processMessage = async (msg) => {
     if (msg.key.fromMe) return;
     if (msg.key.remoteJid === 'status@broadcast') return;
 
+    // ═══════════════════════════════════════════════════════════
+    // NORMALIZE MESSAGE - Unwrap nested message types
+    // Baileys wraps some messages (documentWithCaption, viewOnce, ephemeral)
+    // ═══════════════════════════════════════════════════════════
+    if (msg.message) {
+        // Unwrap viewOnceMessage / viewOnceMessageV2
+        if (msg.message.viewOnceMessage) {
+            msg.message = msg.message.viewOnceMessage.message || msg.message;
+        }
+        if (msg.message.viewOnceMessageV2) {
+            msg.message = msg.message.viewOnceMessageV2.message || msg.message;
+        }
+        // Unwrap ephemeralMessage (disappearing messages)
+        if (msg.message.ephemeralMessage) {
+            msg.message = msg.message.ephemeralMessage.message || msg.message;
+        }
+        // Unwrap documentWithCaptionMessage (document sent with caption text)
+        if (msg.message.documentWithCaptionMessage) {
+            msg.message = msg.message.documentWithCaptionMessage.message || msg.message;
+        }
+    }
+
     const sender = msg.key.remoteJid;
     const pushName = msg.pushName || 'Bro';
     const messageId = msg.key.id;
@@ -1865,10 +1887,14 @@ const main = async () => {
         console.log('[Boot] Starting Health Check server...');
         await startHealthCheckServer();
 
-        // 2. Sync DNS Record ke Cloudflare
-        console.log('[Boot] Syncing DNS record to Cloudflare...');
-        const dnsResult = await syncDNSRecord();
-        console.log(`[Boot] DNS sync result: ${dnsResult.action}`);
+        // 2. Sync DNS Record ke Cloudflare (optional)
+        if (process.env.CF_ZONE_ID && process.env.CF_DNS_API_TOKEN && process.env.CF_TARGET_DOMAIN) {
+            console.log('[Boot] Syncing DNS record to Cloudflare...');
+            const dnsResult = await syncDNSRecord();
+            console.log(`[Boot] DNS sync result: ${dnsResult.action}`);
+        } else {
+            console.log('[Boot] Cloudflare DNS not configured, skipping DNS sync.');
+        }
 
         // 3. Connect ke WhatsApp
         console.log('[Boot] Connecting to WhatsApp...');
