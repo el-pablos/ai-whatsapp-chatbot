@@ -494,8 +494,8 @@ describe('documentHandler - Universal Document Reader', () => {
         });
 
         it('should call onProgress for multi-chunk documents', async () => {
-            // Create large text that will be split into chunks
-            const largeText = 'A'.repeat(250000); // 250k chars = 3 chunks
+            // Create large text that will be split into chunks (15k per chunk)
+            const largeText = 'A'.repeat(50000); // 50k chars = ~4 chunks at 15k each
             
             axios.post.mockResolvedValue({
                 data: {

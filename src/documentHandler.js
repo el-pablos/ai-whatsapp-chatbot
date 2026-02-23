@@ -14,7 +14,31 @@
  * @version 2.3.0
  */
 
-const pdfParse = require('pdf-parse');
+// pdf-parse: support both v1 (exports function) and v2 (exports { PDFParse } class)
+let pdfParse;
+try {
+    const pdfModule = require('pdf-parse');
+    if (typeof pdfModule === 'function') {
+        // v1.x - exports a function directly
+        pdfParse = pdfModule;
+    } else if (pdfModule && typeof pdfModule.PDFParse === 'function') {
+        // v2.x - exports { PDFParse } class with loadPDF method
+        pdfParse = async (buffer, options) => {
+            const parser = new pdfModule.PDFParse();
+            const result = await parser.loadPDF(buffer, options);
+            return result;
+        };
+    } else if (pdfModule && pdfModule.default && typeof pdfModule.default === 'function') {
+        // v2.x alternative export
+        pdfParse = pdfModule.default;
+    } else {
+        console.error('[Document] pdf-parse module loaded but no usable export found:', Object.keys(pdfModule || {}));
+        pdfParse = null;
+    }
+} catch (loadError) {
+    console.error('[Document] Failed to load pdf-parse:', loadError.message);
+    pdfParse = null;
+}
 const mammoth = require('mammoth');
 const axios = require('axios');
 const fs = require('fs').promises;
@@ -195,9 +219,12 @@ const isSupportedDocument = (filename, mimetype) => {
  */
 const extractPdfText = async (buffer) => {
     try {
+        if (!pdfParse) {
+            throw new Error('pdf-parse module not available');
+        }
         console.log(`[Document] Extracting PDF text, buffer size: ${buffer.length}`);
         const data = await pdfParse(buffer);
-        console.log(`[Document] PDF extracted: ${data.numpages} pages, ${data.text?.length || 0} chars`);
+        console.log(`[Document] PDF extracted: ${data.numpages || '?'} pages, ${data.text?.length || 0} chars`);
         return {
             success: true,
             text: data.text,

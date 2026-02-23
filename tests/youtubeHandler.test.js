@@ -309,8 +309,9 @@ describe('youtubeHandler', () => {
             const callArgs = axios.post.mock.calls[0][1];
             const userMessage = callArgs.messages.find(m => m.role === 'user');
             
-            // Should contain formatted numbers
-            expect(userMessage.content).toContain('1,234,567');
+            // Should contain formatted numbers (locale-dependent formatting)
+            const viewStr = (1234567).toLocaleString();
+            expect(userMessage.content).toContain(viewStr);
         });
 
         it('should handle missing video info gracefully', async () => {

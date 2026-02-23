@@ -316,14 +316,14 @@ describe('AI Handler Module', () => {
         });
 
         it('should truncate long text with truncation notice', () => {
-            const longText = 'a'.repeat(5000);
+            const longText = 'a'.repeat(65000);
             const result = smartTruncate(longText);
             expect(result.length).toBeLessThan(longText.length);
             expect(result).toContain('dipotong');
         });
 
         it('should try to break at sentence boundaries', () => {
-            const text = 'Paragraf pertama. ' + 'x'.repeat(4000) + ' Paragraf kedua.';
+            const text = 'Paragraf pertama. ' + 'x'.repeat(62000) + ' Paragraf kedua.';
             const result = smartTruncate(text);
             // Should end with truncation message
             expect(result).toContain('dipotong');
