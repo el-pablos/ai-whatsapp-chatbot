@@ -1,0 +1,106 @@
+/**
+ * Bug Reporter Module
+ * 
+ * Automatically reports errors/bugs to the owner via WhatsApp
+ * when they occur during bot operation.
+ * 
+ * @author Tama El Pablo
+ */
+
+// Owner's WhatsApp JID for bug reports
+const OWNER_JID = `${process.env.BUG_REPORT_OWNER || '6285817378442'}@s.whatsapp.net`;
+
+// Cooldown tracking to avoid spam (same error within 5 minutes)
+const reportedBugs = new Map();
+const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Send a bug report to the owner via WhatsApp
+ * Also notifies the user that the bug has been reported
+ * 
+ * @param {Object} sock - Baileys socket instance
+ * @param {string} sender - The user's JID who triggered the bug
+ * @param {string} pushName - User's display name
+ * @param {Error|string} error - The error object or message
+ * @param {string} context - Where the error occurred (e.g., 'media processing', 'AI response')
+ * @param {Object} [msg] - Original message object for quoting
+ */
+const reportBugToOwner = async (sock, sender, pushName, error, context, msg = null) => {
+    if (!sock) return;
+
+    const errorMessage = typeof error === 'string' ? error : (error?.message || 'Unknown error');
+    const errorStack = typeof error === 'object' ? (error?.stack || '') : '';
+
+    // Cooldown check - don't spam same error
+    const bugKey = `${context}:${errorMessage}`;
+    const lastReported = reportedBugs.get(bugKey);
+    if (lastReported && Date.now() - lastReported < COOLDOWN_MS) {
+        console.log(`[BugReport] Skipping duplicate report (cooldown): ${bugKey}`);
+        return;
+    }
+    reportedBugs.set(bugKey, Date.now());
+
+    // Clean up old entries periodically
+    if (reportedBugs.size > 100) {
+        const now = Date.now();
+        for (const [key, time] of reportedBugs) {
+            if (now - time > COOLDOWN_MS) reportedBugs.delete(key);
+        }
+    }
+
+    const timestamp = new Date().toLocaleString('id-ID', { 
+        timeZone: 'Asia/Jakarta',
+        dateStyle: 'medium',
+        timeStyle: 'medium'
+    });
+
+    // Format bug report for owner
+    const bugReport = `wet w nemu bug, w lapor king Tama dulu ya 🐛
+
+*🔴 BUG REPORTED:* ${errorMessage}
+
+📍 *Context:* ${context}
+👤 *User:* ${pushName} (${sender.replace('@s.whatsapp.net', '')})
+🕐 *Waktu:* ${timestamp}
+${errorStack ? `\n📋 *Stack Trace:*\n\`\`\`\n${errorStack.substring(0, 500)}\n\`\`\`` : ''}
+
+_*⚠️ broadcast message dont reply, reporting to owner*_`;
+
+    // Notify user that the bug is being reported
+    const userNotification = `😓 waduh error nih bro, tapi tenang w udah otomatis laporin bug nya ke owner buat di fix 🔧
+
+*🐛 Bug:* _${errorMessage}_
+
+📨 _Laporan lagi dikirim ke owner..._
+💡 *Tips:* kalo bisa, confirm juga ke owner langsung biar dia cepet notice dan fix bug nya ya! 🙏`;
+
+    try {
+        // Send bug report to owner
+        await sock.sendMessage(OWNER_JID, { text: bugReport });
+        console.log(`[BugReport] Bug reported to owner: ${errorMessage}`);
+    } catch (reportError) {
+        console.error('[BugReport] Failed to send bug report to owner:', reportError.message);
+    }
+
+    try {
+        // Notify the user
+        const sendOptions = msg ? { quoted: msg } : {};
+        await sock.sendMessage(sender, { text: userNotification }, sendOptions);
+        console.log(`[BugReport] User ${pushName} notified about bug report`);
+    } catch (notifyError) {
+        console.error('[BugReport] Failed to notify user:', notifyError.message);
+    }
+};
+
+/**
+ * Clean up cooldown cache
+ */
+const clearBugCooldowns = () => {
+    reportedBugs.clear();
+};
+
+module.exports = {
+    reportBugToOwner,
+    clearBugCooldowns,
+    OWNER_JID
+};

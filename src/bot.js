@@ -136,6 +136,7 @@ const {
     getWeather,
     getLatestEarthquake
 } = require('./weatherHandler');
+const { reportBugToOwner } = require('./bugReporter');
 
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
@@ -959,9 +960,7 @@ const processMessage = async (msg) => {
 
     } catch (error) {
         console.error('[Bot] Error getting AI response:', error.message);
-        await sock.sendMessage(sender, {
-            text: 'duh error euy sistem w 😓 coba lgi nnt ya'
-        }, { quoted: msg });
+        await reportBugToOwner(sock, sender, pushName, error, 'AI Response', msg);
     }
 
     await sock.sendPresenceUpdate('paused', sender);
@@ -1296,9 +1295,7 @@ const handleVoiceMessage = async (msg, sender, pushName, messageId) => {
         
     } catch (error) {
         console.error('[Bot] Error processing voice:', error.message);
-        await sock.sendMessage(sender, {
-            text: 'duh error pas proses voice nya 😓 coba ketik aja ya bro'
-        }, { quoted: msg });
+        await reportBugToOwner(sock, sender, pushName, error, 'Voice Processing', msg);
     }
     
     await sock.sendPresenceUpdate('paused', sender);
@@ -1371,9 +1368,7 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
                 return;
             } catch (stickerError) {
                 console.error('[Bot] Sticker creation error:', stickerError.message);
-                await sock.sendMessage(sender, {
-                    text: 'duh gagal bikin stiker nya 😓 mungkin file nya kegedean atau format nya ga support'
-                }, { quoted: msg });
+                await reportBugToOwner(sock, sender, pushName, stickerError, 'Sticker Creation', msg);
                 await sock.sendPresenceUpdate('paused', sender);
                 return;
             }
@@ -1446,9 +1441,7 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
 
     } catch (error) {
         console.error('[Bot] Error processing media:', error.message);
-        await sock.sendMessage(sender, {
-            text: 'duh error pas proses media nya 😓 coba kirim ulang bro'
-        }, { quoted: msg });
+        await reportBugToOwner(sock, sender, pushName, error, 'Media Processing', msg);
     }
 
     await sock.sendPresenceUpdate('paused', sender);
@@ -1494,9 +1487,7 @@ const handleLocationRequest = async (msg, sender, query) => {
 
     } catch (error) {
         console.error('[Bot] Error handling location request:', error.message);
-        await sock.sendMessage(sender, {
-            text: 'duh error pas nyari lokasi 😓 coba lgi ya'
-        }, { quoted: msg });
+        await reportBugToOwner(sock, sender, msg.pushName || 'User', error, 'Location Request', msg);
     }
 
     await sock.sendPresenceUpdate('paused', sender);
@@ -1552,9 +1543,7 @@ const handleUserLocation = async (msg, sender, pushName, locationMsg) => {
 
     } catch (error) {
         console.error('[Bot] Error handling location:', error.message);
-        await sock.sendMessage(sender, {
-            text: 'nice, w liat lokasi lu 📍'
-        }, { quoted: msg });
+        await reportBugToOwner(sock, sender, pushName, error, 'User Location', msg);
     }
 
     await sock.sendPresenceUpdate('paused', sender);
@@ -1627,9 +1616,7 @@ const handleTarotRequest = async (msg, sender, text, spreadType = null) => {
 
     } catch (error) {
         console.error('[Bot] Error with tarot reading:', error.message);
-        await sock.sendMessage(sender, {
-            text: 'duh error pas baca tarot 😓 coba lgi ya bro'
-        }, { quoted: msg });
+        await reportBugToOwner(sock, sender, msg.pushName || 'User', error, 'Tarot Reading', msg);
     }
 
     await sock.sendPresenceUpdate('paused', sender);
@@ -1660,9 +1647,7 @@ const handleYesNoTarot = async (msg, sender, question) => {
 
     } catch (error) {
         console.error('[Bot] Error with yes/no tarot:', error.message);
-        await sock.sendMessage(sender, {
-            text: 'duh error pas baca kartunya 😓'
-        }, { quoted: msg });
+        await reportBugToOwner(sock, sender, msg.pushName || 'User', error, 'Yes/No Tarot', msg);
     }
 
     await sock.sendPresenceUpdate('paused', sender);
@@ -1701,9 +1686,7 @@ const handleMoodRequest = async (msg, sender, description) => {
 
     } catch (error) {
         console.error('[Bot] Error with mood reading:', error.message);
-        await sock.sendMessage(sender, {
-            text: 'duh error pas baca mood nya 😓 coba ceritain lagi bro'
-        }, { quoted: msg });
+        await reportBugToOwner(sock, sender, msg.pushName || 'User', error, 'Mood Reading', msg);
     }
 
     await sock.sendPresenceUpdate('paused', sender);
@@ -1755,9 +1738,7 @@ const handleYoutubeUrl = async (msg, sender, youtubeInfo) => {
 
     } catch (error) {
         console.error('[Bot] Error processing YouTube URL:', error.message);
-        await sock.sendMessage(sender, {
-            text: 'duh error pas cek video nya 😓 coba lagi ya'
-        }, { quoted: msg });
+        await reportBugToOwner(sock, sender, msg.pushName || 'User', error, 'YouTube URL Processing', msg);
     }
 
     await sock.sendPresenceUpdate('paused', sender);
@@ -1844,9 +1825,7 @@ const handleYoutubeDownload = async (msg, sender, videoId, format) => {
 
     } catch (error) {
         console.error('[Bot] Error downloading YouTube:', error.message);
-        await sock.sendMessage(sender, {
-            text: 'duh gagal download nya 😓 mungkin video nya terlalu gede atau ada masalah koneksi'
-        }, { quoted: msg });
+        await reportBugToOwner(sock, sender, msg.pushName || 'User', error, 'YouTube Download', msg);
     }
 
     await sock.sendPresenceUpdate('paused', sender);
