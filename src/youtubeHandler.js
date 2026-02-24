@@ -25,6 +25,12 @@ const DOWNLOAD_DIR = path.join(process.cwd(), 'downloads');
 const MAX_DURATION = 30 * 60; // 30 minutes max
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB WhatsApp limit
 
+// ═══════════════════════════════════════════════════════════
+// Capability cache — filled once by checkDependencies()
+// ═══════════════════════════════════════════════════════════
+let _ytDlpAvailable = null;   // null = not checked yet
+let _ffmpegAvailable = null;
+
 // YouTube URL patterns
 const YOUTUBE_PATTERNS = [
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/,
@@ -169,6 +175,10 @@ Pake emoji secukupnya 🎬✨`;
  * @returns {Promise<Object>} - Download result
  */
 const downloadAsMP3 = async (url, videoId) => {
+    // Preflight: yt-dlp + ffmpeg required for MP3 conversion
+    if (!(await isYtDlpInstalled())) return { success: false, error: 'yt-dlp not installed on server' };
+    if (!(await isFFmpegInstalled())) return { success: false, error: 'ffmpeg not installed — cannot convert to MP3' };
+
     await ensureDownloadDir();
     
     const outputPath = path.join(DOWNLOAD_DIR, `${videoId}.mp3`);
@@ -230,6 +240,10 @@ const downloadAsMP3 = async (url, videoId) => {
  * @returns {Promise<Object>} - Download result
  */
 const downloadAsMP4 = async (url, videoId) => {
+    // Preflight: yt-dlp + ffmpeg required for MP4 muxing
+    if (!(await isYtDlpInstalled())) return { success: false, error: 'yt-dlp not installed on server' };
+    if (!(await isFFmpegInstalled())) return { success: false, error: 'ffmpeg not installed — cannot merge video/audio' };
+
     await ensureDownloadDir();
     
     const outputPath = path.join(DOWNLOAD_DIR, `${videoId}.mp4`);
@@ -364,16 +378,54 @@ const parseFormatResponse = (responseId) => {
 };
 
 /**
- * Check if yt-dlp is installed
+ * Cross-platform command existence check
+ * @param {string} cmd - command name
  * @returns {Promise<boolean>}
  */
-const isYtDlpInstalled = async () => {
+const commandExists = async (cmd) => {
+    const isWin = process.platform === 'win32';
+    const checkCmd = isWin ? `where ${cmd}` : `which ${cmd}`;
     try {
-        await execAsync('which yt-dlp');
+        await execAsync(checkCmd, { timeout: 5000 });
         return true;
     } catch {
         return false;
     }
+};
+
+/**
+ * Check if yt-dlp is installed (cross-platform, cached)
+ * @returns {Promise<boolean>}
+ */
+const isYtDlpInstalled = async () => {
+    if (_ytDlpAvailable !== null) return _ytDlpAvailable;
+    _ytDlpAvailable = await commandExists('yt-dlp');
+    return _ytDlpAvailable;
+};
+
+/**
+ * Check if ffmpeg is installed (cross-platform, cached)
+ * @returns {Promise<boolean>}
+ */
+const isFFmpegInstalled = async () => {
+    if (_ffmpegAvailable !== null) return _ffmpegAvailable;
+    _ffmpegAvailable = await commandExists('ffmpeg');
+    return _ffmpegAvailable;
+};
+
+/**
+ * Check all YouTube dependencies at startup.
+ * Returns a report object and caches results.
+ * @returns {Promise<{ ytDlp: boolean, ffmpeg: boolean, ready: boolean }>}
+ */
+const checkDependencies = async () => {
+    const ytDlp = await isYtDlpInstalled();
+    const ffmpeg = await isFFmpegInstalled();
+    const ready = ytDlp && ffmpeg;
+    if (!ytDlp) console.warn('[YouTube] ⚠️  yt-dlp NOT found — YouTube features disabled');
+    if (!ffmpeg) console.warn('[YouTube] ⚠️  ffmpeg NOT found — audio conversion disabled');
+    if (ready) console.log('[YouTube] ✅ yt-dlp + ffmpeg ready');
+    return { ytDlp, ffmpeg, ready };
 };
 
 /**
@@ -382,6 +434,15 @@ const isYtDlpInstalled = async () => {
  * @returns {Promise<Object>}
  */
 const processYoutubeUrl = async (url) => {
+    // Preflight: check yt-dlp before doing anything
+    if (!(await isYtDlpInstalled())) {
+        return {
+            success: false,
+            error: 'yt-dlp not installed',
+            message: 'sori bro fitur YouTube lagi ga available di server 😓 yt-dlp belum diinstall'
+        };
+    }
+
     // Get video info
     const info = await getVideoInfo(url);
     
@@ -424,6 +485,9 @@ module.exports = {
     generateFormatList,
     parseFormatResponse,
     isYtDlpInstalled,
+    isFFmpegInstalled,
+    checkDependencies,
+    commandExists,
     processYoutubeUrl,
     formatDuration,
     ensureDownloadDir,

@@ -17,6 +17,35 @@ const axios = require('axios');
 const DDG_API = 'https://api.duckduckgo.com/';
 
 // ═══════════════════════════════════════════════════════════
+// CONFIGURABLE TIMEOUTS & RETRY
+// ═══════════════════════════════════════════════════════════
+const SEARCH_TIMEOUT = parseInt(process.env.WEBSEARCH_TIMEOUT_MS, 10) || 25000;
+const SEARCH_MAX_RETRIES = parseInt(process.env.WEBSEARCH_MAX_RETRIES, 10) || 2;  // 0 = no retry
+const SEARCH_BACKOFF_BASE = 1000; // ms — 1s, 2s, 4s, …
+
+/**
+ * Retry-aware axios GET with exponential backoff
+ * @param {string} url
+ * @param {Object} config - axios config (timeout added automatically)
+ * @param {number} retries - remaining retry count
+ * @returns {Promise<import('axios').AxiosResponse>}
+ */
+const axiosGetWithRetry = async (url, config = {}, retries = SEARCH_MAX_RETRIES) => {
+    const merged = { ...config, timeout: config.timeout || SEARCH_TIMEOUT };
+    try {
+        return await axios.get(url, merged);
+    } catch (err) {
+        if (retries > 0 && (err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT' || err.response?.status >= 500)) {
+            const delay = SEARCH_BACKOFF_BASE * Math.pow(2, SEARCH_MAX_RETRIES - retries);
+            console.warn(`[WebSearch] Retry in ${delay}ms (${retries} left) — ${err.code || err.response?.status}`);
+            await new Promise(r => setTimeout(r, delay));
+            return axiosGetWithRetry(url, config, retries - 1);
+        }
+        throw err;
+    }
+};
+
+// ═══════════════════════════════════════════════════════════
 // NO-SEARCH GUARD - HARD BLOCK PATTERNS (highest priority)
 // These will NEVER trigger search, no matter what
 // ═══════════════════════════════════════════════════════════
@@ -330,15 +359,14 @@ const detectSearchRequest = (text, conversationHistory = []) => {
  */
 const searchDuckDuckGo = async (query) => {
     try {
-        const response = await axios.get(DDG_API, {
+        const response = await axiosGetWithRetry(DDG_API, {
             params: {
                 q: query,
                 format: 'json',
                 no_redirect: 1,
                 no_html: 1,
                 skip_disambig: 1
-            },
-            timeout: 25000
+            }
         });
         
         const data = response.data;
@@ -388,7 +416,7 @@ const searchDuckDuckGo = async (query) => {
  */
 const searchGoogleScrape = async (query) => {
     try {
-        const response = await axios.get('https://www.google.com/search', {
+        const response = await axiosGetWithRetry('https://www.google.com/search', {
             params: {
                 q: query,
                 hl: 'id',
@@ -397,8 +425,7 @@ const searchGoogleScrape = async (query) => {
             },
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            },
-            timeout: 25000
+            }
         });
         
         // Very basic scraping - extract snippets
@@ -434,12 +461,11 @@ const searchGoogleScrape = async (query) => {
  */
 const searchDuckDuckGoHTML = async (query) => {
     try {
-        const response = await axios.get('https://html.duckduckgo.com/html/', {
+        const response = await axiosGetWithRetry('https://html.duckduckgo.com/html/', {
             params: { q: query },
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            },
-            timeout: 25000
+            }
         });
 
         const html = response.data;
@@ -694,9 +720,13 @@ module.exports = {
     parseSearchResults,
     parseWebSearchMarker,
     isInfoQuery,
+    axiosGetWithRetry,
     WEBSEARCH_MARKER_REGEX,
     SEARCH_KEYWORDS,
     DUCKDUCKGO_API_URL,
     MAX_RESULTS,
-    DDG_API
+    DDG_API,
+    SEARCH_TIMEOUT,
+    SEARCH_MAX_RETRIES,
+    SEARCH_BACKOFF_BASE
 };

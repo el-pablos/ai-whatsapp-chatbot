@@ -10,6 +10,7 @@
 
 const express = require('express');
 const { getStats, getAllUsers, cleanupExpiredSessions } = require('./database');
+const pkg = require('../package.json');
 
 const PORT = process.env.HEALTH_CHECK_PORT || 8008;
 
@@ -38,7 +39,7 @@ const startHealthCheckServer = () => {
                 uptimeFormatted: formatUptime(uptime),
                 timestamp: new Date().toISOString(),
                 service: 'AI WhatsApp Chatbot - Tama',
-                version: '2.1.0',
+                version: pkg.version,
                 author: 'Tama El Pablo',
                 endpoints: {
                     health: '/health',
@@ -87,7 +88,7 @@ const startHealthCheckServer = () => {
                     status: 'ok',
                     bot: {
                         name: 'Tama AI Bot',
-                        version: '2.1.0',
+                        version: pkg.version,
                         author: 'Tama El Pablo',
                         contact: {
                             whatsapp: '082210819939',

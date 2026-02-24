@@ -2,9 +2,9 @@
 
 > AI-powered WhatsApp chatbot with authentic Indonesian persona — powered by Claude Sonnet 4.5
 
-[![Version](https://img.shields.io/badge/version-2.3.0-blue.svg?style=for-the-badge)](CHANGELOG.md)
-[![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-green.svg?style=for-the-badge&logo=node.js)](https://nodejs.org)
-[![Tests](https://img.shields.io/badge/tests-454%20passing-success.svg?style=for-the-badge)](tests/)
+[![Version](https://img.shields.io/badge/version-2.6.0-blue.svg?style=for-the-badge)](CHANGELOG.md)
+[![Node](https://img.shields.io/badge/node-%3E%3D20.0.0-green.svg?style=for-the-badge&logo=node.js)](https://nodejs.org)
+[![Tests](https://img.shields.io/badge/tests-567%20passing-success.svg?style=for-the-badge)](tests/)
 [![AI](https://img.shields.io/badge/AI-Claude%20Sonnet%204.5-orange.svg?style=for-the-badge)](https://anthropic.com)
 [![License](https://img.shields.io/badge/license-MIT-purple.svg?style=for-the-badge)](LICENSE)
 
@@ -41,6 +41,8 @@ Tama AI adalah WhatsApp chatbot berbasis AI yang menggunakan **Claude Sonnet 4.5
 | 💾 **Unlimited Memory** | SQLite conversation history tanpa limit |
 | 📄 **70+ Document Formats** | PDF, DOCX, EPUB, ZIP, dan banyak lagi |
 | 🌤️ **Real-time Data** | Cuaca BMKG, web search, YouTube info |
+| 🌐 **Web Search** | AI-driven search via `[WEBSEARCH:]` marker |
+| 📝 **File Creator** | AI generates & sends files (.md, .csv, .json, etc.) |
 | 🔮 **Entertainment** | Tarot 78 kartu, mood reading, zodiak |
 
 ---
@@ -283,7 +285,10 @@ ai-whatsapp-chatbot/
 │   │
 │   ├── healthCheck.js      # HTTP health server
 │   ├── dnsUpdater.js       # Cloudflare DNS sync
-│   └── backupHandler.js    # Auto backup scheduler
+│   ├── backupHandler.js    # Auto backup scheduler
+│   ├── bugReporter.js      # Auto bug report to owner
+│   ├── fileCreator.js      # AI file creation & send
+│   └── errorUtils.js       # normalizeError & helpers
 │
 ├── tests/                  # Jest test files
 ├── data/                   # SQLite database & media
@@ -662,10 +667,10 @@ Konversi gambar/video ke sticker.
 
 ### Prerequisites
 
-- Node.js >= 18.0.0
-- npm >= 8.0.0
-- ffmpeg (untuk voice & sticker)
-- yt-dlp (untuk YouTube)
+- Node.js >= 20.0.0
+- npm >= 10.0.0
+- ffmpeg (untuk voice, sticker, YouTube conversion)
+- yt-dlp (untuk YouTube — optional, auto-detected at startup)
 - Copilot API running (localhost:4141)
 
 ### Installation
@@ -727,6 +732,8 @@ pm2 save
 | `OWNER_NUMBER` | | | Nomor owner untuk admin commands |
 | `HEALTH_CHECK_PORT` | | `8008` | Port health check server |
 | `LOG_LEVEL` | | `info` | Log level: debug, info, warn, error |
+| `WEBSEARCH_TIMEOUT_MS` | | `25000` | Web search request timeout (ms) |
+| `WEBSEARCH_MAX_RETRIES` | | `2` | Web search max retry attempts |
 
 ### Example .env
 
@@ -775,7 +782,7 @@ Default: `http://localhost:8008`
 {
     "status": "healthy",
     "uptime": 3600,
-    "version": "2.3.0",
+    "version": "2.6.0",
     "connected": true
 }
 ```
@@ -797,14 +804,14 @@ Default: `http://localhost:8008`
 ### Run Tests
 
 ```bash
-# All tests
+# All tests with coverage
 npm test
-
-# With coverage
-npm test -- --coverage
 
 # Watch mode
 npm run test:watch
+
+# Smoke / Doctor check (module loading + dependency check)
+npm run doctor
 
 # Specific file
 npm test -- weatherHandler.test.js
@@ -829,16 +836,22 @@ All files            |   58.68 |    48.24 |    55.5 |   59.43 |
 
 ```
 tests/
+├── setup.js                    # Jest global setup
+├── smoke.test.js               # Module loading & doctor check
+├── errorUtils.test.js           # normalizeError tests
 ├── aiHandler.test.js
 ├── calendarHandler.test.js
+├── database.test.js
+├── dnsUpdater.test.js
 ├── documentHandler.test.js
-├── locationHandler.test.js
+├── healthCheck.test.js
+├── messageUtils.test.js
 ├── moodHandler.test.js
 ├── stickerHandler.test.js
 ├── tarotHandler.test.js
 ├── weatherHandler.test.js
-├── webSearchHandler.test.js
-└── youtubeHandler.test.js
+├── webSearchHandler.test.js     # + retry/backoff tests
+└── youtubeHandler.test.js       # + preflight/dependency tests
 ```
 
 ---
@@ -894,7 +907,8 @@ Bot memiliki built-in protection:
 | Document read error | Unsupported format | Check format support |
 | AI response timeout | Slow API | Increase timeout in config |
 | Voice transcription failed | Missing ffmpeg | Install ffmpeg |
-| YouTube download failed | yt-dlp outdated | Update: `pip install -U yt-dlp` |
+| YouTube download failed | yt-dlp missing/outdated | Install: `pip install -U yt-dlp` — bot auto-detects at startup |
+| YouTube disabled on startup | yt-dlp or ffmpeg not found | `npm run doctor` to diagnose |
 
 ### Debug Mode
 
@@ -1004,18 +1018,34 @@ Lihat [CONTRIBUTING.md](CONTRIBUTING.md) untuk guidelines lengkap.
 
 See [CHANGELOG.md](CHANGELOG.md) for detailed version history.
 
-### Latest: v2.3.0 (February 2026)
+### Latest: v2.6.0 (February 2026)
 
-**New Features:**
-- ✅ BMKG Weather API integration
-- ✅ Smart city extraction with filler word removal
-- ✅ Calendar AI formatting
-- ✅ 454 tests passing
+**Production Hardening:**
+- ✅ yt-dlp / ffmpeg preflight check (cross-platform, cached)
+- ✅ Startup capability report banner
+- ✅ WebSearch retry with exponential backoff (`WEBSEARCH_TIMEOUT_MS` env)
+- ✅ Baileys logger silenced (no more prekey-bundle noise)
+- ✅ `normalizeError()` utility for consistent error handling
+- ✅ Smoke / Doctor test (`npm run doctor`)
+- ✅ 567 tests passing across 16 suites
 
-**AI Integration Improvements:**
-- All modules now pass through Claude Sonnet 4.5
-- Natural language understanding enhanced
-- Consistent routing: Input → Intent → Data → AI → Response
+### v2.5.1
+
+- Fixed fileCreator `^` anchor bug
+- Fixed WebSearch timeout 10s → 25s
+- Fixed ACK word boundary (`bet` matching `better`)
+
+### v2.5.0
+
+- Real-time AI web search via `[WEBSEARCH:query]` marker
+- File Creator module (`[FILE:name.ext]` marker)
+- Bug Reporter module (auto-report to owner)
+
+### v2.3.0
+
+- BMKG Weather API integration
+- Smart city extraction with filler word removal
+- Calendar AI formatting
 
 ---
 

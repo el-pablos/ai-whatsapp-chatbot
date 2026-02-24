@@ -15,7 +15,11 @@ const {
     noSearchGuard,
     checkExplicitSearchRequest,
     parseWebSearchMarker,
-    isInfoQuery
+    isInfoQuery,
+    axiosGetWithRetry,
+    SEARCH_TIMEOUT,
+    SEARCH_MAX_RETRIES,
+    SEARCH_BACKOFF_BASE
 } = require('../src/webSearchHandler');
 
 describe('Web Search Handler - v2.0 Anti Auto-Search', () => {
@@ -362,4 +366,42 @@ describe('Web Search Handler - v2.0 Anti Auto-Search', () => {
         });
     });
 
+});
+
+// ═══════════════════════════════════════════════════════════
+// NEW: Timeout & Retry Config Tests (v2.6)
+// ═══════════════════════════════════════════════════════════
+
+describe('Web Search - Timeout & Retry Config', () => {
+    it('SEARCH_TIMEOUT should be a positive number', () => {
+        expect(typeof SEARCH_TIMEOUT).toBe('number');
+        expect(SEARCH_TIMEOUT).toBeGreaterThanOrEqual(5000);
+    });
+
+    it('SEARCH_MAX_RETRIES should be a non-negative integer', () => {
+        expect(typeof SEARCH_MAX_RETRIES).toBe('number');
+        expect(SEARCH_MAX_RETRIES).toBeGreaterThanOrEqual(0);
+    });
+
+    it('SEARCH_BACKOFF_BASE should be a positive number', () => {
+        expect(typeof SEARCH_BACKOFF_BASE).toBe('number');
+        expect(SEARCH_BACKOFF_BASE).toBeGreaterThan(0);
+    });
+
+    it('axiosGetWithRetry should be a function', () => {
+        expect(typeof axiosGetWithRetry).toBe('function');
+    });
+
+    it('default SEARCH_TIMEOUT should be 25000ms', () => {
+        // Unless overridden by env var
+        if (!process.env.WEBSEARCH_TIMEOUT_MS) {
+            expect(SEARCH_TIMEOUT).toBe(25000);
+        }
+    });
+
+    it('default SEARCH_MAX_RETRIES should be 2', () => {
+        if (!process.env.WEBSEARCH_MAX_RETRIES) {
+            expect(SEARCH_MAX_RETRIES).toBe(2);
+        }
+    });
 });

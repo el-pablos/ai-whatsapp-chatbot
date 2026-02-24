@@ -1,5 +1,5 @@
 /**
- * AI WhatsApp Chatbot - Main Bot Service v2.5
+ * AI WhatsApp Chatbot - Main Bot Service v2.6
  *
  * Bot WhatsApp menggunakan @whiskeysockets/baileys dengan:
  * - Persona AI "Tama" via Copilot API
@@ -21,7 +21,7 @@
  * - Cloudflare DNS automation
  * 
  * @author Tama El Pablo
- * @version 2.5.0
+ * @version 2.6.0
  */
 
 // Load environment variables
@@ -109,7 +109,8 @@ const {
     downloadAsMP3,
     downloadAsMP4,
     parseFormatResponse,
-    cleanupFile
+    cleanupFile,
+    checkDependencies
 } = require('./youtubeHandler');
 const {
     scheduleBackup,
@@ -156,6 +157,11 @@ const logger = pino({
         options: { colorize: true }
     }
 }).child({ module: 'bot' });
+
+// Separate Baileys logger — keep at 'error' to suppress noisy
+// internal Signal-protocol messages (e.g. "Closing open session
+// in favor of incoming prekey bundle") that are harmless.
+const baileysLogger = pino({ level: 'error' });
 
 // State untuk tracking koneksi
 let sock = null;
@@ -369,9 +375,9 @@ const connectToWhatsApp = async () => {
             version,
             auth: {
                 creds: state.creds,
-                keys: makeCacheableSignalKeyStore(state.keys, logger)
+                keys: makeCacheableSignalKeyStore(state.keys, baileysLogger)
             },
-            logger,
+            logger: baileysLogger,
             markOnlineOnConnect: true,
             generateHighQualityLinkPreview: false,
             syncFullHistory: false,
@@ -506,7 +512,7 @@ const handleConnectionUpdate = async (update, state) => {
             console.log('║        ✅ WHATSAPP CONNECTED SUCCESSFULLY!               ║');
             console.log('╠═══════════════════════════════════════════════════════════╣');
             console.log(`║  📱 Account: ${me.id?.split('@')[0] || me.id || 'Unknown'}       `);
-            console.log(`║  🤖 Bot: Tama v2.5.0                                      ║`);
+            console.log(`║  🤖 Bot: Tama v2.6.0                                      ║`);
             console.log(`║  💾 Auth saved to: ${AUTH_FOLDER}                  ║`);
             console.log('╚═══════════════════════════════════════════════════════════╝');
         } else {
@@ -519,6 +525,22 @@ const handleConnectionUpdate = async (update, state) => {
             console.log('[Bot] ✅ Auto backup scheduled (daily at 00:00 WIB)');
         } catch (backupErr) {
             console.error('[Bot] Failed to schedule backup:', backupErr.message);
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        // STARTUP CAPABILITY REPORT — run preflight checks
+        // ═══════════════════════════════════════════════════════════
+        try {
+            const deps = await checkDependencies();
+            console.log('╔═══════════════════════════════════════════════════════════╗');
+            console.log('║             🩺  CAPABILITY REPORT                         ║');
+            console.log('╠═══════════════════════════════════════════════════════════╣');
+            console.log(`║  yt-dlp  : ${deps.ytDlp ? '✅ installed' : '❌ NOT FOUND'}                          ║`);
+            console.log(`║  ffmpeg  : ${deps.ffmpeg ? '✅ installed' : '❌ NOT FOUND'}                          ║`);
+            console.log(`║  YouTube : ${deps.ready ? '✅ ready' : '⚠️  disabled'}                              ║`);
+            console.log('╚═══════════════════════════════════════════════════════════╝');
+        } catch (e) {
+            console.error('[Bot] Capability check error:', e.message);
         }
     }
 };
