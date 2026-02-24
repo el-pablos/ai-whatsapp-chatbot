@@ -299,10 +299,11 @@ const hasValidCredentials = () => {
 };
 
 /**
- * Clean up invalid/corrupt auth files
- * Removes partial auth (me.id exists but registered=false) to avoid deadlock
+ * Clean up invalid/corrupt auth files.
+ * Only called on initial boot — NOT on 515 reconnects where partial
+ * auth (me.id + registered=false) is a normal transitional state.
  */
-const cleanupInvalidAuth = () => {
+const cleanupInvalidAuth = (force = false) => {
     try {
         const credsPath = path.join(AUTH_FOLDER, 'creds.json');
         if (fs.existsSync(credsPath)) {
@@ -317,13 +318,15 @@ const cleanupInvalidAuth = () => {
                 }
                 
                 // Partial auth: me.id exists but NOT registered
-                // This is the deadlock state — pairing was attempted but
-                // never completed. Wipe it so a fresh pairing code can
-                // be requested.
                 if (creds.me?.id && creds.registered !== true) {
-                    console.log('[Auth] Partial auth detected (me.id exists, registered=false), wiping for fresh pairing');
-                    fs.unlinkSync(credsPath);
-                    return true;
+                    if (force) {
+                        console.log('[Auth] Force-wiping partial auth (me.id exists, registered=false)');
+                        fs.unlinkSync(credsPath);
+                        return true;
+                    }
+                    // Keep it — could be mid-pairing (515 reconnect will complete it)
+                    console.log('[Auth] Partial auth found (me.id exists, registered=false), keeping for pairing completion');
+                    return false;
                 }
                 
                 // No me.id at all — never paired
@@ -426,9 +429,8 @@ const handleConnectionUpdate = async (update, state) => {
     const { connection, lastDisconnect, qr } = update;
 
     // Check if we already have FULLY VALID credentials (me + registered + keys).
-    // Do NOT fall back to state.creds?.me?.id — that causes a deadlock when
-    // a previous pairing attempt set me.id but registered stayed false.
-    const hasExistingAuth = hasValidCredentials();
+    // Also accept partial auth (me.id exists) — the 515 reconnect will complete it.
+    const hasExistingAuth = hasValidCredentials() || !!(state.creds?.me?.id);
     
     // Handle pairing code method - ONLY if no existing auth
     if (AUTH_METHOD === 'pairing' && !hasExistingAuth && !pairingCodeRequested && !isAuthenticated) {
@@ -490,11 +492,12 @@ const handleConnectionUpdate = async (update, state) => {
 
         console.log(`[Bot] Connection closed. Status: ${statusCode}`);
 
-        // Status 515 = Stream restart required (normal after pairing)
+        // Status 515 = Stream restart required (NORMAL after pairing)
+        // The auth is in a transitional state (me.id set, registered=false).
+        // Do NOT wipe it — the reconnect will complete registration.
         if (statusCode === 515) {
-            console.log('[Bot] Stream restart required (515) - reconnecting...');
-            // Let connectToWhatsApp's cleanupInvalidAuth decide whether to
-            // wipe partial auth or keep fully-registered creds.
+            console.log('[Bot] Stream restart required (515) - normal after pairing, reconnecting WITHOUT cleanup...');
+            isConnecting = false; // allow reconnect
             setTimeout(() => {
                 connectToWhatsApp();
             }, 3000);
@@ -513,7 +516,7 @@ const handleConnectionUpdate = async (update, state) => {
             
             // Auto cleanup and reconnect with new pairing
             try {
-                // Delete auth folder
+                // Delete entire auth folder
                 if (fs.existsSync(AUTH_FOLDER)) {
                     fs.rmSync(AUTH_FOLDER, { recursive: true, force: true });
                     console.log('[Bot] Auth folder cleaned up');
