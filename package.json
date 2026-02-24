@@ -49,7 +49,7 @@
     "pino-pretty": "^13.1.3",
     "qrcode-terminal": "^0.12.0",
     "sharp": "^0.34.5",
-    "tar": "^7.5.7",
+    "tar": "^7.5.9",
     "textract": "^2.5.0"
   },
   "devDependencies": {
