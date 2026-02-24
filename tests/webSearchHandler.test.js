@@ -14,6 +14,7 @@ const {
     detectSearchRequest,
     noSearchGuard,
     checkExplicitSearchRequest,
+    parseWebSearchMarker,
     isInfoQuery
 } = require('../src/webSearchHandler');
 
@@ -296,6 +297,45 @@ describe('Web Search Handler - v2.0 Anti Auto-Search', () => {
         });
         it('should handle whitespace', () => {
             expect(detectSearchRequest('   ')).toBeNull();
+        });
+    });
+
+    // AI-driven web search marker [WEBSEARCH:query]
+    describe('parseWebSearchMarker - AI-driven search', () => {
+        it('should parse valid WEBSEARCH marker', () => {
+            const result = parseWebSearchMarker('[WEBSEARCH:Claude Sonnet 4.5 vs 4.6]');
+            expect(result).not.toBeNull();
+            expect(result.needsSearch).toBe(true);
+            expect(result.query).toBe('Claude Sonnet 4.5 vs 4.6');
+        });
+
+        it('should parse marker embedded in AI response', () => {
+            const response = '[WEBSEARCH:bitcoin price today]\n\nbntar ya w cariin dulu...';
+            const result = parseWebSearchMarker(response);
+            expect(result).not.toBeNull();
+            expect(result.query).toBe('bitcoin price today');
+        });
+
+        it('should return null for no marker', () => {
+            expect(parseWebSearchMarker('normal response without marker')).toBeNull();
+        });
+
+        it('should return null for empty query', () => {
+            expect(parseWebSearchMarker('[WEBSEARCH:]')).toBeNull();
+        });
+
+        it('should return null for null input', () => {
+            expect(parseWebSearchMarker(null)).toBeNull();
+        });
+
+        it('should return null for too short query', () => {
+            expect(parseWebSearchMarker('[WEBSEARCH:ab]')).toBeNull();
+        });
+
+        it('should handle query with special characters', () => {
+            const result = parseWebSearchMarker('[WEBSEARCH:iPhone 17 Pro Max release date 2026]');
+            expect(result).not.toBeNull();
+            expect(result.query).toBe('iPhone 17 Pro Max release date 2026');
         });
     });
 

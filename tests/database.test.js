@@ -10,6 +10,7 @@
 // Import functions that don't need database mocking
 const {
     isOwner,
+    getBotResponseAfter,
     OWNER_NUMBERS
 } = require('../src/database');
 
@@ -128,6 +129,21 @@ describe('Database Module - User Preferences', () => {
             expect(result).toBe('King');
         });
 
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // getBotResponseAfter - export validation
+    // ═══════════════════════════════════════════════════════════
+    describe('getBotResponseAfter', () => {
+        it('should be exported as a function', () => {
+            expect(typeof getBotResponseAfter).toBe('function');
+        });
+
+        it('should return null for null/undefined input', () => {
+            expect(getBotResponseAfter(null, null)).toBeNull();
+            expect(getBotResponseAfter(undefined, undefined)).toBeNull();
+            expect(getBotResponseAfter('', '')).toBeNull();
+        });
     });
 
 });

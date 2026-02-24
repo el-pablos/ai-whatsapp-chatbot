@@ -392,10 +392,11 @@ const searchGoogleScrape = async (query) => {
             params: {
                 q: query,
                 hl: 'id',
-                gl: 'id'
+                gl: 'id',
+                num: 8
             },
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             },
             timeout: 10000
         });
@@ -405,7 +406,7 @@ const searchGoogleScrape = async (query) => {
         const snippetMatches = html.match(/<div class="BNeawe s3v9rd AP7Wnd">(.*?)<\/div>/g) || [];
         
         const snippets = snippetMatches
-            .slice(0, 5)
+            .slice(0, 8)
             .map(s => s.replace(/<[^>]*>/g, '').trim())
             .filter(s => s.length > 20);
         
@@ -427,17 +428,95 @@ const searchGoogleScrape = async (query) => {
 };
 
 /**
- * Main search function - combines multiple sources
+ * Search using DuckDuckGo HTML (more comprehensive results than instant answer API)
+ * @param {string} query - Search query
+ * @returns {Promise<Object>} - Search result
+ */
+const searchDuckDuckGoHTML = async (query) => {
+    try {
+        const response = await axios.get('https://html.duckduckgo.com/html/', {
+            params: { q: query },
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            },
+            timeout: 10000
+        });
+
+        const html = response.data;
+
+        // Extract result snippets from DDG HTML
+        const resultBlocks = html.match(/<a class="result__snippet"[^>]*>(.*?)<\/a>/gs) || [];
+        const titleBlocks = html.match(/<a class="result__a"[^>]*>(.*?)<\/a>/gs) || [];
+        const urlBlocks = html.match(/<a class="result__url"[^>]*>(.*?)<\/a>/gs) || [];
+
+        const snippets = resultBlocks
+            .slice(0, 8)
+            .map(s => s.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#x27;/g, "'").trim())
+            .filter(s => s.length > 15);
+
+        const titles = titleBlocks
+            .slice(0, 8)
+            .map(s => s.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').trim())
+            .filter(s => s.length > 3);
+
+        const urls = urlBlocks
+            .slice(0, 8)
+            .map(s => s.replace(/<[^>]*>/g, '').trim())
+            .filter(s => s.length > 3);
+
+        // Combine into structured results
+        const results = snippets.map((snippet, i) => ({
+            title: titles[i] || '',
+            snippet: snippet,
+            url: urls[i] || ''
+        }));
+
+        return {
+            success: true,
+            query,
+            snippets,
+            results,
+            hasContent: snippets.length > 0,
+            source: 'duckduckgo_html'
+        };
+
+    } catch (error) {
+        console.error('[WebSearch] DuckDuckGo HTML error:', error.message);
+        return {
+            success: false,
+            error: error.message,
+            hasContent: false
+        };
+    }
+};
+
+/**
+ * Main search function - combines multiple sources for best results
  * @param {string} query 
  * @returns {Promise<Object>}
  */
 const webSearch = async (query) => {
-    // Try DuckDuckGo first
+    // Try DuckDuckGo instant answer first (fast, good for definitions)
     let result = await searchDuckDuckGo(query);
     
-    // If no content, try Google scrape as fallback
+    // If no content from instant answer, try DuckDuckGo HTML search (comprehensive)
     if (!result.hasContent) {
-        console.log('[WebSearch] DuckDuckGo no content, trying fallback...');
+        console.log('[WebSearch] DuckDuckGo instant no content, trying DDG HTML...');
+        const ddgHtmlResult = await searchDuckDuckGoHTML(query);
+        if (ddgHtmlResult.hasContent) {
+            result = {
+                ...result,
+                ...ddgHtmlResult,
+                source: 'duckduckgo_html'
+            };
+        }
+    } else {
+        result.source = 'duckduckgo';
+    }
+    
+    // If still no content, try Google scrape as last fallback
+    if (!result.hasContent) {
+        console.log('[WebSearch] DDG no content, trying Google fallback...');
         const googleResult = await searchGoogleScrape(query);
         if (googleResult.hasContent) {
             result = {
@@ -446,8 +525,6 @@ const webSearch = async (query) => {
                 source: 'google'
             };
         }
-    } else {
-        result.source = 'duckduckgo';
     }
     
     return result;
@@ -569,6 +646,36 @@ const isInfoQuery = (text) => {
     return false;
 };
 
+// ═══════════════════════════════════════════════════════════
+// AI-DRIVEN SEARCH: [WEBSEARCH:query] marker
+// AI can request a web search by including this marker in its response
+// Bot intercepts it, searches, and calls AI again with results
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Regex to detect AI's web search request marker
+ * Format: [WEBSEARCH:query text here]
+ */
+const WEBSEARCH_MARKER_REGEX = /\[WEBSEARCH:([^\]]+)\]/;
+
+/**
+ * Parse AI response for web search marker
+ * @param {string} response - AI response text
+ * @returns {{ needsSearch: boolean, query: string } | null}
+ */
+const parseWebSearchMarker = (response) => {
+    if (!response) return null;
+    
+    const match = response.match(WEBSEARCH_MARKER_REGEX);
+    if (!match) return null;
+    
+    const query = match[1].trim();
+    if (query.length < 3) return null;
+    
+    console.log(`[WebSearch] AI requested search: "${query}"`);
+    return { needsSearch: true, query };
+};
+
 // Constants
 const SEARCH_KEYWORDS = ['search', 'cari', 'googling', 'cariin', 'lookup', 'browse'];
 const DUCKDUCKGO_API_URL = DDG_API;
@@ -581,10 +688,13 @@ module.exports = {
     checkNeedsExternalData,
     webSearch,
     searchDuckDuckGo,
+    searchDuckDuckGoHTML,
     formatSearchResult,
     sanitizeQuery,
     parseSearchResults,
+    parseWebSearchMarker,
     isInfoQuery,
+    WEBSEARCH_MARKER_REGEX,
     SEARCH_KEYWORDS,
     DUCKDUCKGO_API_URL,
     MAX_RESULTS,

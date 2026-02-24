@@ -238,6 +238,37 @@ const getMessageById = (messageId) => {
 };
 
 /**
+ * Get the bot's response that was sent right after a specific message
+ * Useful for finding the analysis/response for a quoted media message
+ * 
+ * @param {string} chatId - Chat ID (JID)
+ * @param {string} messageId - The original message ID
+ * @returns {Object|null} - Bot response message or null
+ */
+const getBotResponseAfter = (chatId, messageId) => {
+    if (!chatId || !messageId) return null;
+    
+    const database = initDatabase();
+    
+    // Find the original message timestamp
+    const originalMsg = database.prepare(
+        `SELECT timestamp FROM conversations WHERE message_id = ? LIMIT 1`
+    ).get(messageId);
+    
+    if (!originalMsg) return null;
+    
+    // Find the next bot response after this message
+    const stmt = database.prepare(`
+        SELECT * FROM conversations 
+        WHERE chat_id = ? AND role = 'assistant' AND timestamp > ? 
+        ORDER BY timestamp ASC 
+        LIMIT 1
+    `);
+    
+    return stmt.get(chatId, originalMsg.timestamp) || null;
+};
+
+/**
  * Update or create user profile
  * 
  * @param {string} jid - User's JID
@@ -522,6 +553,7 @@ module.exports = {
     saveMessage,
     getConversationHistory,
     getMessageById,
+    getBotResponseAfter,
     getUserProfile,
     updateUserProfile,
     clearConversation,

@@ -1,11 +1,14 @@
 /**
- * AI WhatsApp Chatbot - Main Bot Service v2.3
- * 
+ * AI WhatsApp Chatbot - Main Bot Service v2.5
+ *
  * Bot WhatsApp menggunakan @whiskeysockets/baileys dengan:
  * - Persona AI "Tama" via Copilot API
  * - Unlimited conversation memory (SQLite)
  * - Image/file understanding (Vision API)
  * - Universal Document Reader (70+ formats - NO LIMITS!)
+ * - Reply-to-Media: analyze quoted media without re-sending
+ * - File Creator: create & send files (.md, .txt, .csv, .json, etc.)
+ * - Real-time Web Search: AI auto-searches internet when needed
  * - YouTube downloader (MP3/MP4)
  * - Location sharing (OpenStreetMap)
  * - Reply detection
@@ -18,7 +21,7 @@
  * - Cloudflare DNS automation
  * 
  * @author Tama El Pablo
- * @version 2.3.0
+ * @version 2.5.0
  */
 
 // Load environment variables
@@ -47,6 +50,7 @@ const {
     saveMessage, 
     getConversationHistory, 
     getMessageById,
+    getBotResponseAfter,
     closeDatabase,
     isOwner,
     getUserPreferences,
@@ -128,7 +132,8 @@ const {
 const {
     detectSearchRequest,
     webSearch,
-    formatSearchResult
+    formatSearchResult,
+    parseWebSearchMarker
 } = require('./webSearchHandler');
 const {
     detectWeatherQuery,
@@ -137,6 +142,11 @@ const {
     getLatestEarthquake
 } = require('./weatherHandler');
 const { reportBugToOwner } = require('./bugReporter');
+const {
+    parseFileMarker,
+    createAndSendFile,
+    detectFileRequest
+} = require('./fileCreator');
 
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
@@ -496,7 +506,7 @@ const handleConnectionUpdate = async (update, state) => {
             console.log('║        ✅ WHATSAPP CONNECTED SUCCESSFULLY!               ║');
             console.log('╠═══════════════════════════════════════════════════════════╣');
             console.log(`║  📱 Account: ${me.id?.split('@')[0] || me.id || 'Unknown'}       `);
-            console.log(`║  🤖 Bot: Tama v2.3.0                                      ║`);
+            console.log(`║  🤖 Bot: Tama v2.5.0                                      ║`);
             console.log(`║  💾 Auth saved to: ${AUTH_FOLDER}                  ║`);
             console.log('╚═══════════════════════════════════════════════════════════╝');
         } else {
@@ -612,15 +622,66 @@ const processMessage = async (msg) => {
     processedMessages.set(messageId, Date.now());
 
     // Extract quoted message info (for reply detection)
-    const quotedMsg = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-    const quotedMessageId = msg.message?.extendedTextMessage?.contextInfo?.stanzaId;
+    // Support contextInfo from ALL message types (text, image, document, video, etc.)
+    const contextInfo = msg.message?.extendedTextMessage?.contextInfo ||
+                       msg.message?.imageMessage?.contextInfo ||
+                       msg.message?.documentMessage?.contextInfo ||
+                       msg.message?.videoMessage?.contextInfo ||
+                       msg.message?.audioMessage?.contextInfo ||
+                       msg.message?.stickerMessage?.contextInfo;
+
+    const quotedMsg = contextInfo?.quotedMessage;
+    const quotedMessageId = contextInfo?.stanzaId;
+    const quotedParticipant = contextInfo?.participant;
     let quotedContent = null;
-    
+    let quotedMediaType = null;
+    let quotedMediaInfo = null;
+
     if (quotedMsg) {
-        quotedContent = quotedMsg.conversation || 
-                       quotedMsg.extendedTextMessage?.text ||
-                       '[media]';
-        console.log(`[Bot] User is replying to: "${quotedContent.slice(0, 50)}..."`);
+        // Detect media type in quoted message
+        if (quotedMsg.imageMessage) {
+            quotedMediaType = 'image';
+            quotedMediaInfo = {
+                mimetype: quotedMsg.imageMessage.mimetype || 'image/jpeg',
+                caption: quotedMsg.imageMessage.caption || '',
+                fileLength: quotedMsg.imageMessage.fileLength
+            };
+            quotedContent = quotedMsg.imageMessage.caption || '[gambar]';
+        } else if (quotedMsg.documentMessage) {
+            quotedMediaType = 'document';
+            quotedMediaInfo = {
+                mimetype: quotedMsg.documentMessage.mimetype || 'application/octet-stream',
+                fileName: quotedMsg.documentMessage.fileName || 'unknown',
+                caption: quotedMsg.documentMessage.caption || '',
+                fileLength: quotedMsg.documentMessage.fileLength
+            };
+            quotedContent = `[dokumen: ${quotedMediaInfo.fileName}]`;
+        } else if (quotedMsg.videoMessage) {
+            quotedMediaType = 'video';
+            quotedMediaInfo = {
+                mimetype: quotedMsg.videoMessage.mimetype || 'video/mp4',
+                caption: quotedMsg.videoMessage.caption || '',
+                fileLength: quotedMsg.videoMessage.fileLength
+            };
+            quotedContent = quotedMsg.videoMessage.caption || '[video]';
+        } else if (quotedMsg.audioMessage) {
+            quotedMediaType = 'audio';
+            quotedMediaInfo = {
+                mimetype: quotedMsg.audioMessage.mimetype || 'audio/ogg',
+                seconds: quotedMsg.audioMessage.seconds,
+                ptt: quotedMsg.audioMessage.ptt
+            };
+            quotedContent = '[voice note / audio]';
+        } else if (quotedMsg.stickerMessage) {
+            quotedMediaType = 'sticker';
+            quotedContent = '[sticker]';
+        } else {
+            // Text-only quoted message
+            quotedContent = quotedMsg.conversation ||
+                           quotedMsg.extendedTextMessage?.text ||
+                           '[media]';
+        }
+        console.log(`[Bot] User is replying to: ${quotedMediaType ? `[${quotedMediaType}] ` : ''}${(quotedContent || '').slice(0, 50)}...`);
     }
 
     // Check for location message from user
@@ -645,11 +706,21 @@ const processMessage = async (msg) => {
     }
 
     // Extract text content
-    const textContent = msg.message?.conversation || 
+    const textContent = msg.message?.conversation ||
                        msg.message?.extendedTextMessage?.text ||
                        null;
 
     if (!textContent) return;
+
+    // ═══════════════════════════════════════════════════════════
+    // REPLY-TO-MEDIA HANDLER
+    // User replies to a previously sent media (image/document/video/audio)
+    // with a text prompt like "analisa ini", "rangkum", etc.
+    // ═══════════════════════════════════════════════════════════
+    if (quotedMsg && quotedMediaType && quotedMediaType !== 'sticker') {
+        const handled = await handleQuotedMediaReply(msg, sender, pushName, messageId, textContent, quotedMsg, quotedMediaType, quotedMediaInfo, quotedMessageId);
+        if (handled) return;
+    }
 
     console.log(`[Bot] Pesan dari ${pushName} (${sender}): ${textContent}`);
 
@@ -933,30 +1004,105 @@ const processMessage = async (msg) => {
         thinking.startAfterDelay(5000, '💭 *bntar ya w lagi mikir...*');
         
         // Fetch AI response with context including owner status and preferred name
-        const aiResponse = await fetchCopilotResponse(textContent, history, {
+        // Also pass file request hint so AI knows to add [FILE:] marker if needed
+        const fileReq = detectFileRequest(textContent);
+        let aiPrompt = textContent;
+        if (fileReq.isFileRequest && fileReq.format) {
+            aiPrompt = `${textContent}\n\n[SYSTEM HINT: User meminta output dalam bentuk file .${fileReq.format}. Tambahkan [FILE:namafile.${fileReq.format}] di awal response dan isi konten file setelahnya. JANGAN gunakan code block/backtick.]`;
+        }
+
+        let aiResponse = await fetchCopilotResponse(aiPrompt, history, {
             quotedContent: quotedContent,
             isOwner: senderIsOwner,
             preferredName: preferredName,
             senderPhone: senderPhone
         });
-        
+
+        // ═══════════════════════════════════════════════════════════
+        // WEBSEARCH MARKER: If AI needs real-time info, it outputs
+        // [WEBSEARCH:query] - we search, then call AI again with results
+        // ═══════════════════════════════════════════════════════════
+        const searchMarker = parseWebSearchMarker(aiResponse);
+        if (searchMarker && searchMarker.needsSearch) {
+            console.log(`[Bot] AI requested web search: "${searchMarker.query}"`);
+            
+            // Notify user
+            await sock.sendMessage(sender, {
+                text: '🔍 bntar ya w cari dulu di internet...'
+            });
+
+            const searchResult = await webSearch(searchMarker.query);
+            
+            if (searchResult && searchResult.success && searchResult.hasContent) {
+                const formattedResults = formatSearchResult(searchResult);
+                
+                // Second AI call with search results injected
+                aiResponse = await fetchCopilotResponse(
+                    `${textContent}\n\n[SEARCH RESULTS untuk "${searchMarker.query}"]\n${formattedResults || 'Tidak ada hasil spesifik'}\n${searchResult.snippets ? searchResult.snippets.join('\n') : ''}\n[END SEARCH RESULTS]\n\nGunakan info di atas untuk menjawab pertanyaan user secara informatif dan akurat. Jangan tambahkan [WEBSEARCH:] lagi.`,
+                    history,
+                    { quotedContent, isOwner: senderIsOwner, preferredName, senderPhone }
+                );
+            } else {
+                // Search failed - call AI again without search
+                aiResponse = await fetchCopilotResponse(
+                    `${textContent}\n\n[NOTE: Web search untuk "${searchMarker.query}" tidak menemukan hasil. Jawab sebaik mungkin berdasarkan pengetahuan yang kamu punya, dan bilang ke user kalau info mungkin tidak up-to-date. Jangan tambahkan [WEBSEARCH:] lagi.]`,
+                    history,
+                    { quotedContent, isOwner: senderIsOwner, preferredName, senderPhone }
+                );
+            }
+        }
+
         // Cancel thinking indicator (response received)
         thinking.cancel();
 
         console.log(`[Bot] Response untuk ${pushName} (owner: ${senderIsOwner}): ${aiResponse.slice(0, 100)}...`);
 
-        // Save AI response to database
-        saveMessage({
-            chatId: sender,
-            senderJid: 'bot',
-            senderName: 'Tama',
-            role: 'assistant',
-            content: aiResponse,
-            messageId: `bot_${Date.now()}`
-        });
+        // Check if AI response contains a file marker [FILE:filename.ext]
+        const fileInfo = parseFileMarker(aiResponse);
 
-        // Send response (auto-splits long messages)
-        await smartSend(sock, sender, aiResponse, { quoted: msg });
+        if (fileInfo && fileInfo.hasFile) {
+            console.log(`[Bot] File creation detected: ${fileInfo.fileName}`);
+
+            // Save AI response to database (full content for context)
+            saveMessage({
+                chatId: sender,
+                senderJid: 'bot',
+                senderName: 'Tama',
+                role: 'assistant',
+                content: `[Sent file: ${fileInfo.fileName}]\n\n${fileInfo.content.slice(0, 500)}...`,
+                messageId: `bot_${Date.now()}`
+            });
+
+            try {
+                // Send the file
+                await createAndSendFile(sock, sender, fileInfo.content, fileInfo.fileName, {
+                    quoted: msg,
+                    caption: `📄 *${fileInfo.fileName}*\n\n_tap buat save ke device lu_`
+                });
+
+                // Send confirmation text
+                await sock.sendMessage(sender, {
+                    text: `nih w udah buatin file nya cuy 📁\n*${fileInfo.fileName}*\ntap aja buat download ya`
+                });
+            } catch (fileError) {
+                console.error('[Bot] Error sending file:', fileError.message);
+                // Fallback: send as text
+                await smartSend(sock, sender, aiResponse, { quoted: msg });
+            }
+        } else {
+            // Normal text response
+            saveMessage({
+                chatId: sender,
+                senderJid: 'bot',
+                senderName: 'Tama',
+                role: 'assistant',
+                content: aiResponse,
+                messageId: `bot_${Date.now()}`
+            });
+
+            // Send response (auto-splits long messages)
+            await smartSend(sock, sender, aiResponse, { quoted: msg });
+        }
 
     } catch (error) {
         console.error('[Bot] Error getting AI response:', error.message);
@@ -964,6 +1110,241 @@ const processMessage = async (msg) => {
     }
 
     await sock.sendPresenceUpdate('paused', sender);
+};
+
+/**
+ * ═══════════════════════════════════════════════════════════
+ * Handle Reply-to-Media - User replies to a media message with text
+ * Re-downloads the quoted media and processes it with the user's prompt
+ * ═══════════════════════════════════════════════════════════
+ */
+const handleQuotedMediaReply = async (msg, sender, pushName, messageId, textContent, quotedMsg, quotedMediaType, quotedMediaInfo, quotedMessageId) => {
+    console.log(`[Bot] Reply-to-media detected: type=${quotedMediaType}, prompt="${textContent.slice(0, 50)}"`);
+
+    await sock.sendPresenceUpdate('composing', sender);
+
+    // Save user message
+    saveMessage({
+        chatId: sender,
+        senderJid: sender,
+        senderName: pushName,
+        role: 'user',
+        content: textContent,
+        messageId: messageId,
+        quotedMessageId: quotedMessageId,
+        quotedContent: `[reply to ${quotedMediaType}]`
+    });
+
+    try {
+        // Construct pseudo-message object for downloading quoted media
+        const mediaMsg = {
+            key: {
+                id: quotedMessageId,
+                remoteJid: sender,
+                fromMe: msg.message?.extendedTextMessage?.contextInfo?.participant ? false : true
+            },
+            message: quotedMsg
+        };
+
+        let buffer;
+        try {
+            buffer = await downloadMediaMessage(
+                mediaMsg,
+                'buffer',
+                {},
+                { logger: console, reuploadRequest: sock.updateMediaMessage }
+            );
+        } catch (downloadError) {
+            console.error(`[Bot] Failed to download quoted media: ${downloadError.message}`);
+
+            // Fallback: try to use stored context from database
+            // First check the original message, then find the bot's analysis response
+            const pastMessage = getMessageById(quotedMessageId);
+            const botResponse = getBotResponseAfter(sender, quotedMessageId);
+            
+            // Use the bot's previous analysis if available (much more useful than just "[document]")
+            const storedContext = botResponse?.content || pastMessage?.content || null;
+            
+            if (storedContext) {
+                const contextSource = botResponse ? 'previous analysis' : 'stored message';
+                console.log(`[Bot] Using ${contextSource} as fallback for expired media (${storedContext.length} chars)`);
+                
+                const history = getConversationHistory(sender);
+                const aiResponse = await fetchCopilotResponse(
+                    `User me-reply ke ${quotedMediaType} sebelumnya. Berikut konteks yang tersimpan:\n\n"${storedContext.slice(0, 10000)}"\n\nPermintaan user: ${textContent}\n\nNote: File media sudah expired, tapi konteks di atas adalah ${botResponse ? 'analisis sebelumnya dari file tersebut' : 'info tersimpan'}. Gunakan untuk menjawab sebaik mungkin.`,
+                    history,
+                    { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone: sender.split('@')[0] }
+                );
+
+                saveMessage({
+                    chatId: sender,
+                    senderJid: 'bot',
+                    senderName: 'Tama',
+                    role: 'assistant',
+                    content: aiResponse,
+                    messageId: `bot_${Date.now()}`
+                });
+
+                await smartSend(sock, sender, aiResponse, { quoted: msg });
+                await sock.sendPresenceUpdate('paused', sender);
+                return true;
+            }
+
+            await sock.sendMessage(sender, {
+                text: 'duh gabisa download ulang media nya bro 😓 kayaknya udah expired. coba kirim ulang file nya ya'
+            }, { quoted: msg });
+            await sock.sendPresenceUpdate('paused', sender);
+            return true;
+        }
+
+        console.log(`[Bot] Successfully re-downloaded quoted ${quotedMediaType}: ${buffer.length} bytes`);
+
+        let aiResponse;
+
+        // Route to appropriate handler based on media type
+        if (quotedMediaType === 'image') {
+            // Image -> Vision API
+            await sock.sendMessage(sender, {
+                text: '👀 oke w liat lagi gambar nya ya...'
+            });
+
+            const history = getConversationHistory(sender);
+            const base64 = buffer.toString('base64');
+            aiResponse = await fetchVisionResponse(base64, quotedMediaInfo.mimetype, textContent, history);
+
+        } else if (quotedMediaType === 'document') {
+            // Document -> Document Handler
+            const filename = quotedMediaInfo.fileName || 'unknown';
+            const mimetype = quotedMediaInfo.mimetype;
+
+            if (isSupportedDocument(filename, mimetype)) {
+                await sock.sendMessage(sender, {
+                    text: `📄 oke w baca ulang "${filename}" sesuai permintaan lu ya...`
+                });
+
+                const onProgress = async (current, total, message) => {
+                    try {
+                        await sock.sendMessage(sender, { text: message });
+                    } catch (err) {
+                        console.error('[Document Progress] Failed to send update:', err.message);
+                    }
+                };
+
+                const history = getConversationHistory(sender);
+                const result = await processDocument(buffer, filename, mimetype, textContent, history, onProgress);
+
+                if (!result.success) {
+                    await reportBugToOwner(sock, sender, pushName, result.error || result.analysis, `Quoted Document: ${filename}`, msg);
+                }
+
+                aiResponse = result.analysis;
+            } else {
+                aiResponse = `sori bro, format file "${filename}" belum ke-support buat analisis ulang 😅`;
+            }
+
+        } else if (quotedMediaType === 'video') {
+            // Video -> acknowledge with context
+            await sock.sendMessage(sender, {
+                text: '🎬 w liat video nya ya...'
+            });
+
+            const history = getConversationHistory(sender);
+            aiResponse = await fetchCopilotResponse(
+                `User me-reply ke video sebelumnya (${quotedMediaInfo.mimetype}, caption: "${quotedMediaInfo.caption || 'tanpa caption'}").\n\nPermintaan user: ${textContent}\n\nNote: w belum bisa analisis video langsung, tapi kasih respons yang helpful berdasarkan konteks.`,
+                history,
+                { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone: sender.split('@')[0] }
+            );
+
+        } else if (quotedMediaType === 'audio') {
+            // Audio -> Transcribe then process
+            await sock.sendMessage(sender, {
+                text: '🎤 oke w dengerin ulang audio nya...'
+            });
+
+            const audioFormat = quotedMediaInfo.mimetype?.includes('ogg') ? 'ogg' :
+                               quotedMediaInfo.mimetype?.includes('mpeg') ? 'mp3' : 'ogg';
+            const transcription = await transcribeAudio(buffer, audioFormat);
+
+            if (transcription.success) {
+                const history = getConversationHistory(sender);
+                aiResponse = await fetchCopilotResponse(
+                    `User me-reply ke voice note/audio sebelumnya.\nIsi audio (transcription): "${transcription.text}"\n\nPermintaan user: ${textContent}`,
+                    history,
+                    { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone: sender.split('@')[0] }
+                );
+            } else {
+                aiResponse = 'duh gabisa transcribe ulang audio nya 😓 coba kirim ulang voice note nya ya';
+            }
+        }
+
+        if (aiResponse) {
+            // Check if AI requested a web search
+            const searchMarker = parseWebSearchMarker(aiResponse);
+            if (searchMarker && searchMarker.needsSearch) {
+                console.log(`[Bot] AI requested web search from quoted media: "${searchMarker.query}"`);
+                await sock.sendMessage(sender, { text: '🔍 bntar ya w cari dulu di internet...' });
+                
+                const searchResult = await webSearch(searchMarker.query);
+                if (searchResult?.success && searchResult?.hasContent) {
+                    const formattedResults = formatSearchResult(searchResult);
+                    const history = getConversationHistory(sender);
+                    aiResponse = await fetchCopilotResponse(
+                        `${textContent}\n\n[SEARCH RESULTS]\n${formattedResults || ''}\n${searchResult.snippets ? searchResult.snippets.join('\n') : ''}\n[END SEARCH RESULTS]\n\nJawab pertanyaan user berdasarkan info di atas. Jangan tambahkan [WEBSEARCH:] lagi.`,
+                        history,
+                        { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone: sender.split('@')[0] }
+                    );
+                }
+            }
+
+            // Check if AI response contains file marker [FILE:filename.ext]
+            const fileInfo = parseFileMarker(aiResponse);
+
+            if (fileInfo && fileInfo.hasFile) {
+                console.log(`[Bot] File creation from quoted media: ${fileInfo.fileName}`);
+
+                saveMessage({
+                    chatId: sender,
+                    senderJid: 'bot',
+                    senderName: 'Tama',
+                    role: 'assistant',
+                    content: `[Sent file: ${fileInfo.fileName}]`,
+                    messageId: `bot_${Date.now()}`
+                });
+
+                try {
+                    await createAndSendFile(sock, sender, fileInfo.content, fileInfo.fileName, {
+                        quoted: msg,
+                        caption: `📄 *${fileInfo.fileName}*\n\n_tap buat save ke device lu_`
+                    });
+
+                    await sock.sendMessage(sender, {
+                        text: `nih w udah buatin file nya cuy 📁\n*${fileInfo.fileName}*`
+                    });
+                } catch (fileError) {
+                    console.error('[Bot] Error sending file from quoted media:', fileError.message);
+                    await smartSend(sock, sender, aiResponse, { quoted: msg });
+                }
+            } else {
+                saveMessage({
+                    chatId: sender,
+                    senderJid: 'bot',
+                    senderName: 'Tama',
+                    role: 'assistant',
+                    content: aiResponse,
+                    messageId: `bot_${Date.now()}`
+                });
+
+                await smartSend(sock, sender, aiResponse, { quoted: msg });
+            }
+        }
+
+    } catch (error) {
+        console.error('[Bot] Error handling quoted media reply:', error.message);
+        await reportBugToOwner(sock, sender, pushName, error, `Quoted Media Reply (${quotedMediaType})`, msg);
+    }
+
+    await sock.sendPresenceUpdate('paused', sender);
+    return true;
 };
 
 /**
@@ -995,7 +1376,7 @@ const handleSpecialCommands = async (msg, sender, text) => {
     // Command: /help
     if (lowerText === '/help' || lowerText === '/bantuan') {
         await sock.sendMessage(sender, {
-            text: `🤖 *Tama AI v2.3*\n\n*Fitur Chat:*\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w analisis/deskripsiin\n• Kirim voice note - w transcribe & jawab\n• Kirim lokasi - w tau dimana lu\n• Reply chat - w paham konteks nya\n\n*Media Features:*\n🎨 /sticker - bikin stiker dari gambar/video\n📸 /tebaksuku - tebak suku dari foto\n\n*Entertainment:*\n🔮 /tarot - baca kartu tarot\n🎴 /tarotyn [pertanyaan] - ya/tidak\n😊 /bacamood [curhat] - baca mood lo\n🎵 kirim link youtube - download MP3/MP4\n\n*Utility:*\n🔍 /search [query] - cari di internet\n📅 /kalender - kalender bulan ini\n📆 /libur - libur nasional\n♈ /zodiak [tgl] - cek zodiak\n🎂 /ultah [tgl] - info ulang tahun\n\n*Commands Lain:*\n• /clear - hapus history chat\n• /stats - lihat statistik\n• /help - bantuan ini\n\n💡 Chat aja natural, w ngerti kok bro 😎`
+            text: `🤖 *Tama AI v2.5*\n\n*Fitur Chat:*\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w analisis/deskripsiin\n• Kirim voice note - w transcribe & jawab\n• Kirim lokasi - w tau dimana lu\n• Reply chat - w paham konteks nya\n• Reply lampiran - w bisa analisis ulang tanpa kirim ulang!\n• 🌐 *Real-time Internet* - w bisa cari info terbaru di internet!\n\n*File Creator:*\n📄 Minta w buatin file:\n• "buatkan laporan dalam format markdown"\n• "bikin file .txt tentang..."\n• "export data ke csv"\n• "buat file html portofolio"\nFile dikirim sebagai attachment, bukan raw text!\n\n*Document Reader (70+ format):*\n📑 Kirim file apa aja - w baca & analisis:\n• PDF, DOCX, TXT, MD, HTML, XML, dll\n• Max file: 100MB (limit WhatsApp)\n• Reply dokumen + text = analisis ulang!\n\n*Media Features:*\n🎨 /sticker - bikin stiker dari gambar/video\n📸 /tebaksuku - tebak suku dari foto\n\n*Entertainment:*\n🔮 /tarot - baca kartu tarot\n🎴 /tarotyn [pertanyaan] - ya/tidak\n😊 /bacamood [curhat] - baca mood lo\n🎵 kirim link youtube - download MP3/MP4\n\n*Utility:*\n🔍 /search [query] - cari di internet\n📅 /kalender - kalender bulan ini\n📆 /libur - libur nasional\n♈ /zodiak [tgl] - cek zodiak\n🎂 /ultah [tgl] - info ulang tahun\n\n*Commands Lain:*\n• /clear - hapus history chat\n• /stats - lihat statistik\n• /help - bantuan ini\n\n💡 Chat aja natural, w ngerti kok bro 😎\n\n*NEW!* 🌐 W bisa akses internet real-time! Tanya aja soal info terbaru, w cariin 🔥`
         }, { quoted: msg });
         return true;
     }
@@ -1861,9 +2242,10 @@ const gracefulShutdown = async (signal) => {
  */
 const main = async () => {
     console.log('╔═══════════════════════════════════════════════╗');
-    console.log('║  AI WhatsApp Chatbot - Tama Clone v2.2.0      ║');
+    console.log('║  AI WhatsApp Chatbot - Tama Clone v2.5.0      ║');
     console.log('║  by el-pablos                                 ║');
     console.log('║  Features: Vision, Docs, YouTube, Tarot, Mood ║');
+    console.log('║  NEW: Real-time Web Search, File Creator      ║');
     console.log('╚═══════════════════════════════════════════════╝');
     console.log('');
 
