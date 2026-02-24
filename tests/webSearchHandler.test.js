@@ -243,6 +243,29 @@ describe('Web Search Handler - v2.0 Anti Auto-Search', () => {
         it('should NOT search for "apa kabar king?"', () => {
             expect(detectSearchRequest('apa kabar king?')).toBeNull();
         });
+
+        // v2.5.1 - ACK word boundary fix: "bet" should NOT match "better"
+        it('should NOT block "better mana apa bedanya snnet 4.5 dan 4.6?" (bet ≠ better)', () => {
+            const result = noSearchGuard('better mana apa bedanya snnet 4.5 dan 4.6?');
+            expect(result).toBe(false);
+        });
+
+        it('should still block standalone "bet" as acknowledgement', () => {
+            expect(noSearchGuard('bet')).toBe(true);
+        });
+
+        it('should still block "bet oke sip"', () => {
+            expect(noSearchGuard('bet oke sip')).toBe(true);
+        });
+
+        it('should NOT block "yang mana lebih bagus?" (ya ≠ yang)', () => {
+            const result = noSearchGuard('yang mana lebih bagus antara laptop A dan B?');
+            expect(result).toBe(false);
+        });
+
+        it('should still block standalone "ya" as acknowledgement', () => {
+            expect(noSearchGuard('ya')).toBe(true);
+        });
     });
 
     // noSearchGuard Tests

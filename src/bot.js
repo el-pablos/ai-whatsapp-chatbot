@@ -1063,6 +1063,11 @@ const processMessage = async (msg) => {
         if (fileInfo && fileInfo.hasFile) {
             console.log(`[Bot] File creation detected: ${fileInfo.fileName}`);
 
+            // Send intro text if AI included a greeting before the file marker
+            if (fileInfo.preText) {
+                await sock.sendMessage(sender, { text: fileInfo.preText }, { quoted: msg });
+            }
+
             // Save AI response to database (full content for context)
             saveMessage({
                 chatId: sender,
@@ -1076,14 +1081,16 @@ const processMessage = async (msg) => {
             try {
                 // Send the file
                 await createAndSendFile(sock, sender, fileInfo.content, fileInfo.fileName, {
-                    quoted: msg,
+                    quoted: fileInfo.preText ? undefined : msg,
                     caption: `📄 *${fileInfo.fileName}*\n\n_tap buat save ke device lu_`
                 });
 
-                // Send confirmation text
-                await sock.sendMessage(sender, {
-                    text: `nih w udah buatin file nya cuy 📁\n*${fileInfo.fileName}*\ntap aja buat download ya`
-                });
+                // Send confirmation text only if there was no preText (avoid redundant messages)
+                if (!fileInfo.preText) {
+                    await sock.sendMessage(sender, {
+                        text: `nih w udah buatin file nya cuy 📁\n*${fileInfo.fileName}*\ntap aja buat download ya`
+                    });
+                }
             } catch (fileError) {
                 console.error('[Bot] Error sending file:', fileError.message);
                 // Fallback: send as text
@@ -1302,6 +1309,11 @@ const handleQuotedMediaReply = async (msg, sender, pushName, messageId, textCont
             if (fileInfo && fileInfo.hasFile) {
                 console.log(`[Bot] File creation from quoted media: ${fileInfo.fileName}`);
 
+                // Send intro text if AI included a greeting before the file marker
+                if (fileInfo.preText) {
+                    await sock.sendMessage(sender, { text: fileInfo.preText }, { quoted: msg });
+                }
+
                 saveMessage({
                     chatId: sender,
                     senderJid: 'bot',
@@ -1313,13 +1325,15 @@ const handleQuotedMediaReply = async (msg, sender, pushName, messageId, textCont
 
                 try {
                     await createAndSendFile(sock, sender, fileInfo.content, fileInfo.fileName, {
-                        quoted: msg,
+                        quoted: fileInfo.preText ? undefined : msg,
                         caption: `📄 *${fileInfo.fileName}*\n\n_tap buat save ke device lu_`
                     });
 
-                    await sock.sendMessage(sender, {
-                        text: `nih w udah buatin file nya cuy 📁\n*${fileInfo.fileName}*`
-                    });
+                    if (!fileInfo.preText) {
+                        await sock.sendMessage(sender, {
+                            text: `nih w udah buatin file nya cuy 📁\n*${fileInfo.fileName}*`
+                        });
+                    }
                 } catch (fileError) {
                     console.error('[Bot] Error sending file from quoted media:', fileError.message);
                     await smartSend(sock, sender, aiResponse, { quoted: msg });

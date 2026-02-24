@@ -71,9 +71,9 @@ const getMimeType = (ext) => {
 
 /**
  * File marker pattern used by AI to indicate file output
- * Format: [FILE:filename.ext] at the start of the response
+ * Format: [FILE:filename.ext] anywhere in the response (AI may add intro text before it)
  */
-const FILE_MARKER_REGEX = /^\[FILE:([^\]]+)\]\s*/;
+const FILE_MARKER_REGEX = /\[FILE:([^\]]+)\]\s*/;
 
 /**
  * Check if AI response contains a file marker
@@ -87,7 +87,13 @@ const parseFileMarker = (response) => {
     if (!match) return null;
 
     const fileName = match[1].trim();
-    const content = response.replace(FILE_MARKER_REGEX, '').trim();
+    const markerStart = match.index;
+    const markerEnd = markerStart + match[0].length;
+
+    // Everything after the marker is the file content
+    const content = response.substring(markerEnd).trim();
+    // Everything before the marker is intro text (AI greeting etc.)
+    const preText = response.substring(0, markerStart).trim();
 
     // Validate filename
     if (!fileName || fileName.length > 200) return null;
@@ -101,6 +107,7 @@ const parseFileMarker = (response) => {
         fileName: sanitizeFileName(fileName),
         extension: ext,
         content: content,
+        preText: preText || '',
         mimetype: getMimeType(ext)
     };
 };
@@ -181,8 +188,8 @@ const detectFileRequest = (text) => {
     const filePatterns = [
         // Direct format mentions
         /(?:dalam|ke|jadi|sebagai|format|bentuk)\s+(?:file\s+)?(?:\.?)(md|markdown|txt|csv|json|html|xml|yaml|yml|py|js|sql)\b/i,
-        // "buatkan/bikin file"
-        /(?:buatk?an|bikin|buat|create|generate|export)\s+(?:dalam\s+)?(?:bentuk\s+)?file\s+(?:\.?)(md|markdown|txt|csv|json|html|xml|yaml|yml)\b/i,
+        // "buatkan/bikin/bikinin file"
+        /(?:buatk?(?:an|in)|bikin(?:in|kan)?|buat|create|generate|export)\s+(?:dalam\s+)?(?:bentuk\s+)?file\s+(?:\.?)(md|markdown|txt|csv|json|html|xml|yaml|yml)\b/i,
         // "kirim sebagai file"
         /(?:kirim|send)\s+(?:sebagai|sebagi|sbg|as)\s+file/i,
         // "file .md" / "format .md"
@@ -202,7 +209,7 @@ const detectFileRequest = (text) => {
 
     // Generic file request without specific format
     const genericPatterns = [
-        /(?:buatk?an|bikin|buat|create|generate)\s+(?:sebuah\s+)?file\b/i,
+        /(?:buatk?(?:an|in)|bikin(?:in|kan)?|buat|create|generate)\s+(?:sebuah\s+)?file\b/i,
         /(?:kirim|send)\s+(?:sebagai|sbg|as)\s+file\b/i,
         /export\s+(?:ke|to)\s+file\b/i
     ];

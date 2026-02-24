@@ -30,11 +30,11 @@ const GREETING_PATTERNS = [
 
 // Acknowledgements - never search  
 const ACK_PATTERNS = [
-    /^(ok|oke|okey|okay|sip|siap|mantap|gas|bet|iya|yep|yup|yoi|yoa|yow|yes|ya|ye)/i,
-    /^(amin|aminn|aminnn|makasih|thanks|thx|tq|ty|thank you|terima\s*kasih)/i,
-    /^(nah|noh|wah|dah|udah|sudah|done|selesai|kelar)/i,
-    /^(nice|mantul|mantab|keren|gokil|asik|asiik|asyik)/i,
-    /^(noted|siapp|gas\s*lah|otw|lesgo|let'?s?\s*go)/i
+    /^(ok|oke|okey|okay|sip|siap|mantap|gas|bet|iya|yep|yup|yoi|yoa|yow|yes|ya|ye)\b/i,
+    /^(amin|aminn|aminnn|makasih|thanks|thx|tq|ty|thank you|terima\s*kasih)\b/i,
+    /^(nah|noh|wah|dah|udah|sudah|done|selesai|kelar)\b/i,
+    /^(nice|mantul|mantab|keren|gokil|asik|asiik|asyik)\b/i,
+    /^(noted|siapp|gas\s*lah|otw|lesgo|let'?s?\s*go)\b/i
 ];
 
 // Laughter/Emoji reactions - never search
@@ -69,10 +69,10 @@ const SMALLTALK_PATTERNS = [
 
 // Short confirmations/responses - never search
 const SHORT_RESPONSE_PATTERNS = [
-    /^(iya|ga|gak|engga|enggak|tidak|no|nope|nop|gajadi|batal|cancel)/i,
-    /^(bener|betul|benar|salah|wrong|right)/i,
-    /^(mungkin|maybe|kayanya|kynya|kyknya|sepertinya)/i,
-    /^(cie|ciee|cieee|wkwk|anjir|anjay|asw|asuw|cuk|njir|njay)/i,
+    /^(iya|ga|gak|engga|enggak|tidak|no|nope|nop|gajadi|batal|cancel)\b/i,
+    /^(bener|betul|benar|salah|wrong|right)\b/i,
+    /^(mungkin|maybe|kayanya|kynya|kyknya|sepertinya)\b/i,
+    /^(cie|ciee|cieee|wkwk|anjir|anjay|asw|asuw|cuk|njir|njay)\b/i,
     /^[\?\!\.\,]+$/  // Just punctuation
 ];
 
@@ -338,7 +338,7 @@ const searchDuckDuckGo = async (query) => {
                 no_html: 1,
                 skip_disambig: 1
             },
-            timeout: 10000
+            timeout: 25000
         });
         
         const data = response.data;
@@ -398,7 +398,7 @@ const searchGoogleScrape = async (query) => {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             },
-            timeout: 10000
+            timeout: 25000
         });
         
         // Very basic scraping - extract snippets
@@ -439,7 +439,7 @@ const searchDuckDuckGoHTML = async (query) => {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             },
-            timeout: 10000
+            timeout: 25000
         });
 
         const html = response.data;
