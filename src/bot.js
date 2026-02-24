@@ -1,7 +1,8 @@
 /**
- * AI WhatsApp Chatbot - Main Bot Service v2.6
+ * AI WhatsApp Chatbot - Main Bot Service v2.7
  *
  * Bot WhatsApp menggunakan @whiskeysockets/baileys dengan:
+ * - Auto-setup: npm install, yt-dlp, ffmpeg on every boot
  * - Persona AI "Tama" via Copilot API
  * - Unlimited conversation memory (SQLite)
  * - Image/file understanding (Vision API)
@@ -21,8 +22,15 @@
  * - Cloudflare DNS automation
  * 
  * @author Tama El Pablo
- * @version 2.6.0
+ * @version 2.7.0
  */
+
+// ═══════════════════════════════════════════════════════════
+// AUTO-SETUP: runs BEFORE any npm module is loaded
+// Installs npm deps, yt-dlp, ffmpeg, creates dirs
+// Uses only Node.js built-ins — safe even without node_modules
+// ═══════════════════════════════════════════════════════════
+require('./autoSetup');
 
 // Load environment variables
 require('dotenv').config();
