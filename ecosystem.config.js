@@ -4,6 +4,11 @@
  * Config untuk manage bot dan copilot-api via PM2
  * Usage: pm2 start ecosystem.config.js
  * 
+ * Bootstrap: scripts/bootstrap.sh runs before bot starts
+ *   - auto npm install
+ *   - auto install yt-dlp, ffmpeg
+ *   - creates required directories
+ * 
  * @author Tama (el-pablos)
  */
 
@@ -30,15 +35,15 @@ module.exports = {
         {
             name: 'wa-tama-bot',
             cwd: '/root/work/ai-whatsapp-chatbot',
-            script: 'src/bot.js',
-            interpreter: 'node',
+            script: 'scripts/start.sh',
+            interpreter: 'bash',
             watch: false,
             autorestart: true,
             max_restarts: 10,
             restart_delay: 5000,
             // Wait for copilot-api to start
             wait_ready: true,
-            listen_timeout: 10000,
+            listen_timeout: 30000,
             env: {
                 NODE_ENV: 'production'
             },
