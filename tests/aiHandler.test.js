@@ -271,16 +271,28 @@ describe('AI Handler Module', () => {
     // ═══════════════════════════════════════════════════════════
     describe('isOwnerNumber', () => {
 
-        it('should return true for owner phone number with country code', () => {
+        it('should return true for owner #1 phone number with country code', () => {
             expect(isOwnerNumber('6282210819939')).toBe(true);
         });
 
-        it('should return true for owner phone number without country code', () => {
+        it('should return true for owner #1 phone number without country code', () => {
             expect(isOwnerNumber('082210819939')).toBe(true);
         });
 
-        it('should return true for owner JID format', () => {
+        it('should return true for owner #1 JID format', () => {
             expect(isOwnerNumber('6282210819939@s.whatsapp.net')).toBe(true);
+        });
+
+        it('should return true for owner #2 (6285817378442)', () => {
+            expect(isOwnerNumber('6285817378442')).toBe(true);
+        });
+
+        it('should return true for owner #2 with 0 prefix', () => {
+            expect(isOwnerNumber('085817378442')).toBe(true);
+        });
+
+        it('should return true for owner #2 JID format', () => {
+            expect(isOwnerNumber('6285817378442@s.whatsapp.net')).toBe(true);
         });
 
         it('should return false for non-owner number', () => {
@@ -298,11 +310,80 @@ describe('AI Handler Module', () => {
 
     describe('OWNER_NUMBERS', () => {
 
-        it('should contain owner phone numbers', () => {
+        it('should contain both owner phone numbers', () => {
             expect(OWNER_NUMBERS).toContain('6282210819939');
             expect(OWNER_NUMBERS).toContain('082210819939');
+            expect(OWNER_NUMBERS).toContain('6285817378442');
+            expect(OWNER_NUMBERS).toContain('085817378442');
         });
 
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // NEW TESTS: fetchCopilotResponse with pushName/userContextHint
+    // ═══════════════════════════════════════════════════════════
+    describe('fetchCopilotResponse with personalization options', () => {
+
+        it('should accept pushName in options without error', async () => {
+            const mockResponse = {
+                data: {
+                    choices: [{
+                        message: { content: 'hey Salsa!' }
+                    }]
+                }
+            };
+            axios.post.mockResolvedValue(mockResponse);
+
+            const result = await fetchCopilotResponse('hello', [], {
+                pushName: 'Salsa',
+                userContextHint: '[SPECIAL_USER: Salsa]'
+            });
+
+            expect(result).toBe('hey Salsa!');
+        });
+
+        it('should inject userContextHint into system messages when provided', async () => {
+            const mockResponse = {
+                data: {
+                    choices: [{
+                        message: { content: 'yo king!' }
+                    }]
+                }
+            };
+            axios.post.mockResolvedValue(mockResponse);
+
+            await fetchCopilotResponse('hello', [], {
+                isOwner: true,
+                senderPhone: '6282210819939',
+                pushName: 'Tama',
+                userContextHint: '[OWNER: true] Ini owner kamu'
+            });
+
+            // Verify the API was called with system message containing contextHint
+            const callArgs = axios.post.mock.calls[0][1];
+            const messages = callArgs.messages;
+            const systemMsg = messages.find(m => m.role === 'system');
+            expect(systemMsg).toBeDefined();
+            expect(systemMsg.content).toContain('[OWNER: true]');
+        });
+
+        it('should work normally without pushName or userContextHint', async () => {
+            const mockResponse = {
+                data: {
+                    choices: [{
+                        message: { content: 'response biasa aja' }
+                    }]
+                }
+            };
+            axios.post.mockResolvedValue(mockResponse);
+
+            const result = await fetchCopilotResponse('test message', [], {
+                isOwner: false,
+                senderPhone: '6281234567890'
+            });
+
+            expect(result).toBe('response biasa aja');
+        });
     });
 
     // ═══════════════════════════════════════════════════════════

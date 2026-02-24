@@ -56,8 +56,10 @@ const {
     isOwner,
     getUserPreferences,
     getPreferredName,
-    detectNicknamePreference
+    detectNicknamePreference,
+    scheduleRetentionCleanup
 } = require('./database');
+const { classifyUser } = require('./userProfileHelper');
 const { 
     downloadMedia, 
     getMediaType, 
@@ -363,6 +365,7 @@ const connectToWhatsApp = async () => {
     try {
         // Initialize database
         initDatabase();
+        scheduleRetentionCleanup();
         
         // Ensure auth folder exists
         if (!fs.existsSync(AUTH_FOLDER)) {
@@ -889,7 +892,7 @@ const processMessage = async (msg) => {
             const aiResponse = await fetchCopilotResponse(
                 `User bertanya: "${textContent}"\n\nData kalender:\n${calendarData}\n\nSampaikan info ini dengan natural dan helpful, sesuai gaya lo.`,
                 history,
-                { isOwner: senderIsOwner, preferredName, senderPhone }
+                { isOwner: senderIsOwner, preferredName, senderPhone, pushName, userContextHint: classifyUser(senderPhone, pushName).contextHint }
             );
             
             saveMessage({
@@ -922,9 +925,10 @@ const processMessage = async (msg) => {
     // Send typing indicator
     await sock.sendPresenceUpdate('composing', sender);
     
-    // Get sender phone and check if owner
+    // Get sender phone and classify user (owner / salsa / normal)
     const senderPhone = sender.split('@')[0];
     const senderIsOwner = isOwner(sender);
+    const userProfile = classifyUser(senderPhone, pushName);
     
     // Check for nickname preference in message
     const detectedNickname = detectNicknamePreference(sender, textContent);
@@ -983,7 +987,7 @@ const processMessage = async (msg) => {
                 const aiResponse = await fetchCopilotResponse(
                     `Berdasarkan data BMKG ini, kasih info cuaca/gempa ke user dengan natural dan informatif. Data sudah akurat, tinggal sampaikan dengan gaya lo:\n\n${weatherContext}`,
                     history,
-                    { isOwner: senderIsOwner, preferredName, senderPhone }
+                    { isOwner: senderIsOwner, preferredName, senderPhone, pushName, userContextHint: classifyUser(senderPhone, pushName).contextHint }
                 );
                 
                 saveMessage({
@@ -1026,7 +1030,7 @@ const processMessage = async (msg) => {
                 const aiResponse = await fetchCopilotResponse(
                     `berdasarkan hasil pencarian ini, kasih rangkuman yang informatif dan helpful untuk user:\n\n${searchContext}`,
                     history,
-                    { searchResults: searchResult, isOwner: senderIsOwner, preferredName, senderPhone }
+                    { searchResults: searchResult, isOwner: senderIsOwner, preferredName, senderPhone, pushName, userContextHint: userProfile.contextHint }
                 );
                 
                 saveMessage({
@@ -1072,7 +1076,9 @@ const processMessage = async (msg) => {
             quotedContent: quotedContent,
             isOwner: senderIsOwner,
             preferredName: preferredName,
-            senderPhone: senderPhone
+            senderPhone: senderPhone,
+            pushName: pushName,
+            userContextHint: userProfile.contextHint
         });
 
         // ═══════════════════════════════════════════════════════════
@@ -1097,14 +1103,14 @@ const processMessage = async (msg) => {
                 aiResponse = await fetchCopilotResponse(
                     `${textContent}\n\n[SEARCH RESULTS untuk "${searchMarker.query}"]\n${formattedResults || 'Tidak ada hasil spesifik'}\n${searchResult.snippets ? searchResult.snippets.join('\n') : ''}\n[END SEARCH RESULTS]\n\nGunakan info di atas untuk menjawab pertanyaan user secara informatif dan akurat. Jangan tambahkan [WEBSEARCH:] lagi.`,
                     history,
-                    { quotedContent, isOwner: senderIsOwner, preferredName, senderPhone }
+                    { quotedContent, isOwner: senderIsOwner, preferredName, senderPhone, pushName, userContextHint: userProfile.contextHint }
                 );
             } else {
                 // Search failed - call AI again without search
                 aiResponse = await fetchCopilotResponse(
                     `${textContent}\n\n[NOTE: Web search untuk "${searchMarker.query}" tidak menemukan hasil. Jawab sebaik mungkin berdasarkan pengetahuan yang kamu punya, dan bilang ke user kalau info mungkin tidak up-to-date. Jangan tambahkan [WEBSEARCH:] lagi.]`,
                     history,
-                    { quotedContent, isOwner: senderIsOwner, preferredName, senderPhone }
+                    { quotedContent, isOwner: senderIsOwner, preferredName, senderPhone, pushName, userContextHint: userProfile.contextHint }
                 );
             }
         }
@@ -1185,6 +1191,9 @@ const processMessage = async (msg) => {
 const handleQuotedMediaReply = async (msg, sender, pushName, messageId, textContent, quotedMsg, quotedMediaType, quotedMediaInfo, quotedMessageId) => {
     console.log(`[Bot] Reply-to-media detected: type=${quotedMediaType}, prompt="${textContent.slice(0, 50)}"`);
 
+    const senderPhone = sender.split('@')[0];
+    const _userProfile = classifyUser(senderPhone, pushName);
+
     await sock.sendPresenceUpdate('composing', sender);
 
     // Save user message
@@ -1237,7 +1246,7 @@ const handleQuotedMediaReply = async (msg, sender, pushName, messageId, textCont
                 const aiResponse = await fetchCopilotResponse(
                     `User me-reply ke ${quotedMediaType} sebelumnya. Berikut konteks yang tersimpan:\n\n"${storedContext.slice(0, 10000)}"\n\nPermintaan user: ${textContent}\n\nNote: File media sudah expired, tapi konteks di atas adalah ${botResponse ? 'analisis sebelumnya dari file tersebut' : 'info tersimpan'}. Gunakan untuk menjawab sebaik mungkin.`,
                     history,
-                    { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone: sender.split('@')[0] }
+                    { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone, pushName, userContextHint: _userProfile.contextHint }
                 );
 
                 saveMessage({
@@ -1316,7 +1325,7 @@ const handleQuotedMediaReply = async (msg, sender, pushName, messageId, textCont
             aiResponse = await fetchCopilotResponse(
                 `User me-reply ke video sebelumnya (${quotedMediaInfo.mimetype}, caption: "${quotedMediaInfo.caption || 'tanpa caption'}").\n\nPermintaan user: ${textContent}\n\nNote: w belum bisa analisis video langsung, tapi kasih respons yang helpful berdasarkan konteks.`,
                 history,
-                { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone: sender.split('@')[0] }
+                { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone, pushName, userContextHint: _userProfile.contextHint }
             );
 
         } else if (quotedMediaType === 'audio') {
@@ -1334,7 +1343,7 @@ const handleQuotedMediaReply = async (msg, sender, pushName, messageId, textCont
                 aiResponse = await fetchCopilotResponse(
                     `User me-reply ke voice note/audio sebelumnya.\nIsi audio (transcription): "${transcription.text}"\n\nPermintaan user: ${textContent}`,
                     history,
-                    { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone: sender.split('@')[0] }
+                    { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone, pushName, userContextHint: _userProfile.contextHint }
                 );
             } else {
                 aiResponse = 'duh gabisa transcribe ulang audio nya 😓 coba kirim ulang voice note nya ya';
@@ -1355,7 +1364,7 @@ const handleQuotedMediaReply = async (msg, sender, pushName, messageId, textCont
                     aiResponse = await fetchCopilotResponse(
                         `${textContent}\n\n[SEARCH RESULTS]\n${formattedResults || ''}\n${searchResult.snippets ? searchResult.snippets.join('\n') : ''}\n[END SEARCH RESULTS]\n\nJawab pertanyaan user berdasarkan info di atas. Jangan tambahkan [WEBSEARCH:] lagi.`,
                         history,
-                        { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone: sender.split('@')[0] }
+                        { isOwner: isOwner(sender), preferredName: getPreferredName(sender, pushName), senderPhone, pushName, userContextHint: _userProfile.contextHint }
                     );
                 }
             }
@@ -1621,7 +1630,7 @@ const handleSpecialCommands = async (msg, sender, text) => {
             const aiResponse = await fetchCopilotResponse(
                 `berdasarkan hasil pencarian ini, kasih rangkuman yang informatif:\n\nQuery: "${query}"\n\nHasil:\n${formattedResults || 'Tidak ada hasil'}`,
                 history,
-                { searchResults: searchResult }
+                { searchResults: searchResult, pushName: null, userContextHint: classifyUser(sender.split('@')[0], null).contextHint }
             );
             
             await smartSend(sock, sender, aiResponse, { quoted: msg });
@@ -1681,6 +1690,9 @@ const handleSpecialCommands = async (msg, sender, text) => {
 const handleVoiceMessage = async (msg, sender, pushName, messageId) => {
     console.log(`[Bot] Voice message dari ${pushName}`);
     
+    const _senderPhone = sender.split('@')[0];
+    const _userProfile = classifyUser(_senderPhone, pushName);
+
     await sock.sendPresenceUpdate('composing', sender);
     
     try {
@@ -1730,7 +1742,10 @@ const handleVoiceMessage = async (msg, sender, pushName, messageId) => {
         
         // Get AI response for the transcribed text
         const history = getConversationHistory(sender);
-        const aiResponse = await fetchCopilotResponse(transcribedText, history);
+        const aiResponse = await fetchCopilotResponse(transcribedText, history, {
+            pushName,
+            userContextHint: _userProfile.contextHint
+        });
         
         // Save response
         saveMessage({
@@ -1760,6 +1775,9 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
     const mediaType = getMediaType(msg);
     const caption = getMediaCaption(msg);
     
+    const _senderPhone = sender.split('@')[0];
+    const _userProfile = classifyUser(_senderPhone, pushName);
+
     console.log(`[Bot] Media ${mediaType} dari ${pushName}: ${caption || '(no caption)'}`);
 
     await sock.sendPresenceUpdate('composing', sender);
@@ -1877,7 +1895,7 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
             aiResponse = await fetchCopilotResponse(
                 `User kirim file: ${filename}`,
                 history,
-                { mediaDescription: docInfo }
+                { mediaDescription: docInfo, pushName, userContextHint: _userProfile.contextHint }
             );
         }
         else {
@@ -1981,9 +1999,11 @@ const handleUserLocation = async (msg, sender, pushName, locationMsg) => {
 
         // Get history and respond
         const history = getConversationHistory(sender);
+        const _locProfile = classifyUser(sender.split('@')[0], pushName);
         const aiResponse = await fetchCopilotResponse(
             `User share lokasi nya di: ${locationInfo.address}`,
-            history
+            history,
+            { pushName, userContextHint: _locProfile.contextHint }
         );
 
         // Save response

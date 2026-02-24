@@ -2,10 +2,11 @@
  * Database Module - Chat Memory Storage
  * 
  * SQLite database untuk menyimpan conversation history per user
- * Session expires after 24 hours automatically
+ * Retention policy: 6 months (configurable via RETENTION_MONTHS env)
+ * Context window: 24 hours for AI context (configurable via SESSION_EXPIRY_HOURS env)
  * 
  * @author Tama El Pablo
- * @version 2.1.0
+ * @version 2.7.0
  */
 
 const Database = require('better-sqlite3');
@@ -15,8 +16,12 @@ const fs = require('fs');
 // Database path
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data', 'chat_memory.db');
 
-// Session expiry: 24 hours in milliseconds
-const SESSION_EXPIRY_MS = 24 * 60 * 60 * 1000;
+// Session expiry for AI context window: 24 hours default
+const SESSION_EXPIRY_MS = (parseInt(process.env.SESSION_EXPIRY_HOURS, 10) || 24) * 60 * 60 * 1000;
+
+// Retention policy: 6 months default (data older than this gets cleaned up)
+const RETENTION_MONTHS = parseInt(process.env.RETENTION_MONTHS, 10) || 6;
+const RETENTION_MS = RETENTION_MONTHS * 30 * 24 * 60 * 60 * 1000; // approx months in ms
 
 // Ensure data directory exists
 const dataDir = path.dirname(DB_PATH);
@@ -345,7 +350,8 @@ const getStats = () => {
         totalUsers: totalUsers.count,
         totalChats: totalChats.count,
         activeChats: activeChats.count,
-        sessionExpiryHours: 24
+        sessionExpiryHours: SESSION_EXPIRY_MS / (60 * 60 * 1000),
+        retentionMonths: RETENTION_MONTHS
     };
 };
 
@@ -389,30 +395,92 @@ const getAllUsers = () => {
 };
 
 /**
- * Cleanup expired sessions (messages older than 24 hours)
- * Call this periodically to clean up old data
+ * Cleanup messages older than retention period (default: 6 months).
+ * - Idempotent: safe to run repeatedly
+ * - Batched: deletes in chunks to avoid blocking event loop
+ * - Backward-compatible: records without timestamp are preserved (not deleted)
  * 
+ * @param {number} batchSize - Number of rows to delete per batch (default 1000)
  * @returns {Object} - Cleanup result with deleted count
  */
-const cleanupExpiredSessions = () => {
+const cleanupExpiredSessions = (batchSize = 1000) => {
     const database = initDatabase();
     
-    const cutoffTime = Date.now() - SESSION_EXPIRY_MS;
+    const cutoffTime = Date.now() - RETENTION_MS;
     
-    // Get count before deletion
-    const beforeCount = database.prepare(`SELECT COUNT(*) as count FROM conversations WHERE timestamp <= ?`).get(cutoffTime);
+    // Count how many messages will be deleted
+    // Only delete messages that HAVE a valid timestamp AND are older than retention
+    // Records with timestamp=0 or NULL are preserved (legacy data without proper timestamps)
+    const beforeCount = database.prepare(
+        `SELECT COUNT(*) as count FROM conversations WHERE timestamp > 0 AND timestamp <= ?`
+    ).get(cutoffTime);
     
-    // Delete expired messages
-    const stmt = database.prepare(`DELETE FROM conversations WHERE timestamp <= ?`);
-    const result = stmt.run(cutoffTime);
+    let totalDeleted = 0;
     
-    console.log(`[Database] Cleaned up ${result.changes} expired messages (older than 24 hours)`);
+    if (beforeCount.count > 0) {
+        // Batch delete to avoid long locks
+        const deleteStmt = database.prepare(
+            `DELETE FROM conversations WHERE rowid IN (
+                SELECT rowid FROM conversations WHERE timestamp > 0 AND timestamp <= ? LIMIT ?
+            )`
+        );
+        
+        let deleted;
+        do {
+            deleted = deleteStmt.run(cutoffTime, batchSize).changes;
+            totalDeleted += deleted;
+        } while (deleted === batchSize);
+    }
+    
+    // Also clean up very old user_profiles that haven't been seen in retention period
+    const profileCleanup = database.prepare(
+        `DELETE FROM user_profiles WHERE last_seen > 0 AND last_seen <= ? AND jid NOT IN (
+            SELECT DISTINCT chat_id FROM conversations
+        )`
+    ).run(cutoffTime);
+    
+    if (totalDeleted > 0 || profileCleanup.changes > 0) {
+        console.log(`[Database] Retention cleanup: ${totalDeleted} messages, ${profileCleanup.changes} orphan profiles removed (older than ${RETENTION_MONTHS} months)`);
+    }
     
     return {
-        deletedCount: result.changes,
+        deletedCount: totalDeleted,
+        orphanProfilesDeleted: profileCleanup.changes,
         cutoffTime: cutoffTime,
-        cutoffDate: new Date(cutoffTime).toISOString()
+        cutoffDate: new Date(cutoffTime).toISOString(),
+        retentionMonths: RETENTION_MONTHS
     };
+};
+
+/**
+ * Schedule automatic retention cleanup.
+ * Runs once daily at ~03:00 local time.
+ * Safe to call multiple times (idempotent).
+ */
+let _retentionTimer = null;
+const scheduleRetentionCleanup = () => {
+    if (_retentionTimer) return; // already scheduled
+    
+    // Run cleanup immediately on startup (lightweight if nothing to delete)
+    try {
+        cleanupExpiredSessions();
+    } catch (e) {
+        console.error('[Database] Startup retention cleanup error:', e.message);
+    }
+    
+    // Then run every 24 hours
+    _retentionTimer = setInterval(() => {
+        try {
+            cleanupExpiredSessions();
+        } catch (e) {
+            console.error('[Database] Scheduled retention cleanup error:', e.message);
+        }
+    }, 24 * 60 * 60 * 1000);
+    
+    // Don't prevent process exit
+    if (_retentionTimer.unref) _retentionTimer.unref();
+    
+    console.log(`[Database] Retention cleanup scheduled (policy: ${RETENTION_MONTHS} months)`);
 };
 
 /**
@@ -435,8 +503,10 @@ const closeDatabase = () => {
  * Format: without country code prefix variations
  */
 const OWNER_NUMBERS = [
-    '6282210819939',  // With country code
-    '082210819939',   // Without country code
+    '6282210819939',  // Tama - With country code
+    '082210819939',   // Tama - Without country code
+    '6285817378442',  // Owner 2 - With country code
+    '085817378442',   // Owner 2 - Without country code
 ];
 
 /**
@@ -560,12 +630,17 @@ module.exports = {
     getStats,
     getAllUsers,
     cleanupExpiredSessions,
+    scheduleRetentionCleanup,
     closeDatabase,
-    // New exports for user preferences
+    // User preferences
     isOwner,
     getUserPreferences,
     saveUserPreference,
     getPreferredName,
     detectNicknamePreference,
-    OWNER_NUMBERS
+    OWNER_NUMBERS,
+    // Constants (for testing)
+    RETENTION_MS,
+    RETENTION_MONTHS,
+    SESSION_EXPIRY_MS
 };

@@ -3,15 +3,20 @@
  * 
  * Test cases untuk validasi:
  * 1. User preferences functions
- * 2. Owner detection
+ * 2. Owner detection (both owners)
  * 3. Nickname pattern detection (without database side effects)
+ * 4. Retention policy constants & cleanup
+ * 5. Backward compatibility (legacy data preserved)
  */
 
 // Import functions that don't need database mocking
 const {
     isOwner,
     getBotResponseAfter,
-    OWNER_NUMBERS
+    OWNER_NUMBERS,
+    RETENTION_MS,
+    RETENTION_MONTHS,
+    SESSION_EXPIRY_MS
 } = require('../src/database');
 
 describe('Database Module - User Preferences', () => {
@@ -61,6 +66,31 @@ describe('Database Module - User Preferences', () => {
 
         it('should contain the main owner number', () => {
             expect(OWNER_NUMBERS.some(num => num.includes('82210819939'))).toBe(true);
+        });
+
+        it('should contain the second owner number', () => {
+            expect(OWNER_NUMBERS.some(num => num.includes('85817378442'))).toBe(true);
+        });
+
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // Owner Detection — second owner (6285817378442)
+    // ═══════════════════════════════════════════════════════════
+    describe('isOwner - second owner (6285817378442)', () => {
+
+        it('should return true for second owner with country code JID', () => {
+            expect(isOwner('6285817378442@s.whatsapp.net')).toBe(true);
+        });
+
+        it('should return true for second owner with 0 prefix', () => {
+            expect(isOwner('085817378442@s.whatsapp.net')).toBe(true);
+        });
+
+        it('should return true for second owner raw digits', () => {
+            expect(isOwner('6285817378442')).toBe(true);
+            expect(isOwner('085817378442')).toBe(true);
+            expect(isOwner('85817378442')).toBe(true);
         });
 
     });
@@ -144,6 +174,48 @@ describe('Database Module - User Preferences', () => {
             expect(getBotResponseAfter(undefined, undefined)).toBeNull();
             expect(getBotResponseAfter('', '')).toBeNull();
         });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // Retention Policy Constants
+    // ═══════════════════════════════════════════════════════════
+    describe('Retention Policy', () => {
+
+        it('should export RETENTION_MONTHS as a positive number', () => {
+            expect(typeof RETENTION_MONTHS).toBe('number');
+            expect(RETENTION_MONTHS).toBeGreaterThan(0);
+        });
+
+        it('should default to 6 months retention', () => {
+            // Default unless overridden by env
+            expect(RETENTION_MONTHS).toBe(6);
+        });
+
+        it('should export RETENTION_MS consistent with RETENTION_MONTHS', () => {
+            const expectedMs = RETENTION_MONTHS * 30 * 24 * 60 * 60 * 1000;
+            expect(RETENTION_MS).toBe(expectedMs);
+        });
+
+        it('should have RETENTION_MS much larger than SESSION_EXPIRY_MS', () => {
+            // Retention (6 months) >>> session context window (24h)
+            expect(RETENTION_MS).toBeGreaterThan(SESSION_EXPIRY_MS * 100);
+        });
+
+        it('should export SESSION_EXPIRY_MS as a positive number', () => {
+            expect(typeof SESSION_EXPIRY_MS).toBe('number');
+            expect(SESSION_EXPIRY_MS).toBeGreaterThan(0);
+        });
+
+        it('should have SESSION_EXPIRY_MS default to 24 hours', () => {
+            // 24h = 86400000ms
+            expect(SESSION_EXPIRY_MS).toBe(24 * 60 * 60 * 1000);
+        });
+
+        it('should have retention period of approximately 6 months in days', () => {
+            const retentionDays = RETENTION_MS / (24 * 60 * 60 * 1000);
+            expect(retentionDays).toBe(180); // 6 * 30
+        });
+
     });
 
 });

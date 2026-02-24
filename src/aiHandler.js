@@ -15,13 +15,14 @@
  */
 
 const axios = require('axios');
+const { isOwnerPhone, classifyUser } = require('./userProfileHelper');
 
 // Load environment variables
 const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141';
 const COPILOT_API_MODEL = process.env.COPILOT_API_MODEL || 'claude-sonnet-4.5';
 
-// Owner phone numbers for recognition
-const OWNER_NUMBERS = ['6282210819939', '082210819939'];
+// Owner phone numbers for recognition (kept for backward compat, uses helper internally)
+const OWNER_NUMBERS = ['6282210819939', '082210819939', '6285817378442', '085817378442'];
 
 /**
  * Check if phone number belongs to owner
@@ -29,13 +30,7 @@ const OWNER_NUMBERS = ['6282210819939', '082210819939'];
  * @returns {boolean}
  */
 const isOwnerNumber = (phoneNumber) => {
-    if (!phoneNumber) return false;
-    const cleaned = phoneNumber.replace('@s.whatsapp.net', '').replace('@g.us', '');
-    return OWNER_NUMBERS.some(ownerNum => 
-        cleaned === ownerNum || 
-        cleaned.endsWith(ownerNum.replace(/^0/, '')) ||
-        ownerNum.endsWith(cleaned.replace(/^62/, ''))
-    );
+    return isOwnerPhone(phoneNumber);
 };
 
 /**
@@ -313,20 +308,32 @@ const getRandomErrorResponse = () => {
  * @param {boolean} options.isOwner - Whether the sender is the owner
  * @param {string} options.preferredName - User's preferred nickname
  * @param {string} options.senderPhone - Sender's phone number for owner detection
+ * @param {string} options.pushName - Sender's WhatsApp display name (for Salsa detection)
+ * @param {string} options.userContextHint - Pre-computed context hint from userProfileHelper
  * @returns {Promise<string>} - Response dari AI dengan gaya Tama
  */
 const fetchCopilotResponse = async (userMessage, conversationHistory = [], options = {}) => {
-    const { quotedContent, mediaDescription, isOwner: ownerFlag, preferredName, senderPhone } = options;
+    const { quotedContent, mediaDescription, isOwner: ownerFlag, preferredName, senderPhone, pushName, userContextHint } = options;
     
-    // Check if sender is owner
+    // Use pre-computed context hint if provided, otherwise compute
+    let contextHint = userContextHint || '';
+    if (!contextHint && senderPhone) {
+        const profile = classifyUser(senderPhone, pushName);
+        contextHint = profile.contextHint;
+    }
+    
+    // Check if sender is owner (backward compat)
     const senderIsOwner = ownerFlag || isOwnerNumber(senderPhone);
     
     try {
-        // Build context-aware message with owner/nickname context
+        // Build context-aware message with owner/nickname/salsa context
         let contextualMessage = '';
         
-        // Add owner context if applicable
-        if (senderIsOwner) {
+        // Add personalization context hint (owner, salsa, or combo)
+        if (contextHint) {
+            contextualMessage += contextHint + ' ';
+        } else if (senderIsOwner) {
+            // Fallback: simple owner tag if no contextHint computed
             contextualMessage += '[OWNER: true] ';
         }
         
