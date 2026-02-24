@@ -172,6 +172,7 @@ let reconnectAttempts = 0;
 // Store pending YouTube downloads
 const pendingYoutubeDownloads = new Map();
 let pairingCodeRequested = false;
+let pairingCodeTimeout = null; // Auto-retry timer for expired pairing codes
 let isAuthenticated = false; // Track if we have valid auth
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_INTERVAL = 5000; // 5 detik
@@ -299,7 +300,7 @@ const hasValidCredentials = () => {
 
 /**
  * Clean up invalid/corrupt auth files
- * IMPORTANT: Don't remove auth if me.id exists - pairing might be in progress
+ * Removes partial auth (me.id exists but registered=false) to avoid deadlock
  */
 const cleanupInvalidAuth = () => {
     try {
@@ -309,14 +310,23 @@ const cleanupInvalidAuth = () => {
             try {
                 const creds = JSON.parse(credsContent);
                 
-                // If me.id exists, pairing was successful - DON'T delete!
-                // Even if registered is false, the connection will set it to true
-                if (creds.me?.id) {
-                    console.log('[Auth] Found existing pairing (me.id exists), keeping auth');
+                // Fully registered + has me.id = valid, keep it
+                if (creds.me?.id && creds.registered === true) {
+                    console.log('[Auth] Valid registered auth found, keeping');
                     return false;
                 }
                 
-                // Only cleanup if no me.id at all (never paired)
+                // Partial auth: me.id exists but NOT registered
+                // This is the deadlock state — pairing was attempted but
+                // never completed. Wipe it so a fresh pairing code can
+                // be requested.
+                if (creds.me?.id && creds.registered !== true) {
+                    console.log('[Auth] Partial auth detected (me.id exists, registered=false), wiping for fresh pairing');
+                    fs.unlinkSync(credsPath);
+                    return true;
+                }
+                
+                // No me.id at all — never paired
                 if (!creds.me?.id) {
                     console.log('[Auth] No pairing found (no me.id), cleaning up for fresh start');
                     fs.unlinkSync(credsPath);
@@ -379,6 +389,7 @@ const connectToWhatsApp = async () => {
                 keys: makeCacheableSignalKeyStore(state.keys, baileysLogger)
             },
             browser: Browsers.ubuntu('Chrome'),
+            printQRInTerminal: false,
             logger: baileysLogger,
             markOnlineOnConnect: true,
             generateHighQualityLinkPreview: false,
@@ -414,8 +425,10 @@ const connectToWhatsApp = async () => {
 const handleConnectionUpdate = async (update, state) => {
     const { connection, lastDisconnect, qr } = update;
 
-    // Check if we already have valid credentials - skip pairing code request
-    const hasExistingAuth = hasValidCredentials() || state.creds?.me?.id;
+    // Check if we already have FULLY VALID credentials (me + registered + keys).
+    // Do NOT fall back to state.creds?.me?.id — that causes a deadlock when
+    // a previous pairing attempt set me.id but registered stayed false.
+    const hasExistingAuth = hasValidCredentials();
     
     // Handle pairing code method - ONLY if no existing auth
     if (AUTH_METHOD === 'pairing' && !hasExistingAuth && !pairingCodeRequested && !isAuthenticated) {
@@ -435,7 +448,21 @@ const handleConnectionUpdate = async (update, state) => {
                     console.log('║  Buka WhatsApp > Linked Devices > Link a Device           ║');
                     console.log('║  Pilih "Link with phone number instead"                   ║');
                     console.log('║  Masukkan code di atas                                    ║');
+                    console.log('║  ⏱️  Code expires in 60s — will auto-refresh              ║');
                     console.log('╚═══════════════════════════════════════════════════════════╝');
+                    
+                    // Auto-retry if code isn't used within 60 seconds
+                    if (pairingCodeTimeout) clearTimeout(pairingCodeTimeout);
+                    pairingCodeTimeout = setTimeout(() => {
+                        if (!isAuthenticated) {
+                            console.log('[Bot] Pairing code expired, requesting fresh code...');
+                            pairingCodeRequested = false;
+                            // Wipe partial auth and reconnect
+                            const credsPath = path.join(AUTH_FOLDER, 'creds.json');
+                            if (fs.existsSync(credsPath)) fs.unlinkSync(credsPath);
+                            connectToWhatsApp();
+                        }
+                    }, 60000);
                 } catch (err) {
                     console.error('[Bot] Error requesting pairing code:', err.message);
                     pairingCodeRequested = false;
@@ -464,12 +491,13 @@ const handleConnectionUpdate = async (update, state) => {
         console.log(`[Bot] Connection closed. Status: ${statusCode}`);
 
         // Status 515 = Stream restart required (normal after pairing)
-        // Don't cleanup auth, just reconnect
         if (statusCode === 515) {
-            console.log('[Bot] Stream restart required (515) - this is normal after pairing, reconnecting...');
+            console.log('[Bot] Stream restart required (515) - reconnecting...');
+            // Let connectToWhatsApp's cleanupInvalidAuth decide whether to
+            // wipe partial auth or keep fully-registered creds.
             setTimeout(() => {
                 connectToWhatsApp();
-            }, 2000);
+            }, 3000);
             return;
         }
 
@@ -507,6 +535,7 @@ const handleConnectionUpdate = async (update, state) => {
         isAuthenticated = true;
         reconnectAttempts = 0;
         pairingCodeRequested = false; // Reset for future reconnects
+        if (pairingCodeTimeout) { clearTimeout(pairingCodeTimeout); pairingCodeTimeout = null; }
         
         // Log connected user info
         const me = state.creds?.me || sock.user;
@@ -2281,7 +2310,7 @@ const gracefulShutdown = async (signal) => {
  */
 const main = async () => {
     console.log('╔═══════════════════════════════════════════════╗');
-    console.log('║  AI WhatsApp Chatbot - Tama Clone v2.5.0      ║');
+    console.log('║  AI WhatsApp Chatbot - Tama Clone v2.6.0      ║');
     console.log('║  by el-pablos                                 ║');
     console.log('║  Features: Vision, Docs, YouTube, Tarot, Mood ║');
     console.log('║  NEW: Real-time Web Search, File Creator      ║');
