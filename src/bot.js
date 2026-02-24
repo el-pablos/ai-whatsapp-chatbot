@@ -34,7 +34,8 @@ const {
     DisconnectReason,
     fetchLatestBaileysVersion,
     makeCacheableSignalKeyStore,
-    downloadMediaMessage
+    downloadMediaMessage,
+    Browsers
 } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const qrcode = require('qrcode-terminal');
@@ -377,6 +378,7 @@ const connectToWhatsApp = async () => {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, baileysLogger)
             },
+            browser: Browsers.ubuntu('Chrome'),
             logger: baileysLogger,
             markOnlineOnConnect: true,
             generateHighQualityLinkPreview: false,
@@ -419,11 +421,12 @@ const handleConnectionUpdate = async (update, state) => {
     if (AUTH_METHOD === 'pairing' && !hasExistingAuth && !pairingCodeRequested && !isAuthenticated) {
         if (PHONE_NUMBER) {
             pairingCodeRequested = true;
-            console.log('[Bot] No existing auth found, requesting pairing code untuk nomor:', PHONE_NUMBER);
+            const cleanNumber = PHONE_NUMBER.replace(/[^0-9]/g, '');
+            console.log('[Bot] No existing auth found, requesting pairing code untuk nomor:', cleanNumber);
             
             setTimeout(async () => {
                 try {
-                    const code = await sock.requestPairingCode(PHONE_NUMBER);
+                    const code = await sock.requestPairingCode(cleanNumber);
                     console.log('╔═══════════════════════════════════════════════════════════╗');
                     console.log('║              📱 PAIRING CODE (Masukkan di WA)             ║');
                     console.log('╠═══════════════════════════════════════════════════════════╣');
@@ -437,7 +440,7 @@ const handleConnectionUpdate = async (update, state) => {
                     console.error('[Bot] Error requesting pairing code:', err.message);
                     pairingCodeRequested = false;
                 }
-            }, 3000);
+            }, 5000);
         } else {
             console.error('[Bot] WA_PHONE_NUMBER tidak diset!');
         }
