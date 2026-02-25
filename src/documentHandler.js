@@ -249,18 +249,102 @@ const extractPdfText = async (buffer) => {
 };
 
 /**
- * Extract text from DOCX
+ * Extract text from DOCX with multi-layer fallback
+ * 
+ * DOCX is a ZIP containing XML files. WhatsApp forwarding/re-compression
+ * can corrupt the ZIP structure. Fallback chain:
+ *  1. mammoth (proper DOCX parser)
+ *  2. AdmZip → manually read word/document.xml → strip XML tags
+ *  3. Raw buffer scan for XML text content
+ *  4. Brute-force UTF-8 decode (strips binary noise)
  */
 const extractDocxText = async (buffer) => {
+    // ── Method 1: mammoth (best quality) ──
     try {
-        console.log(`[Document] Extracting DOCX text, buffer size: ${buffer.length}`);
+        console.log(`[Document] Extracting DOCX text via mammoth, buffer size: ${buffer.length}`);
         const result = await mammoth.extractRawText({ buffer });
-        console.log(`[Document] DOCX extracted: ${result.value?.length || 0} chars`);
-        return { success: true, text: result.value, metadata: {} };
+        if (result.value && result.value.trim().length > 0) {
+            console.log(`[Document] DOCX extracted via mammoth: ${result.value.length} chars`);
+            return { success: true, text: result.value, metadata: { method: 'mammoth' } };
+        }
     } catch (error) {
-        console.error(`[Document] DOCX extraction failed: ${error.message}`);
-        return { success: false, error: error.message, text: '', metadata: {} };
+        console.warn(`[Document] mammoth failed: ${error.message}`);
     }
+
+    // ── Method 2: AdmZip → extract word/document.xml ──
+    try {
+        console.log('[Document] Trying AdmZip fallback for DOCX...');
+        const zip = new AdmZip(buffer);
+        const docEntry = zip.getEntry('word/document.xml');
+        if (docEntry) {
+            const xmlContent = docEntry.getData().toString('utf-8');
+            // Strip XML tags, keep text content
+            const text = xmlContent
+                .replace(/<w:br[^>]*\/>/gi, '\n')        // line breaks
+                .replace(/<\/w:p>/gi, '\n')               // paragraph ends
+                .replace(/<\/w:tr>/gi, '\n')              // table row ends
+                .replace(/<[^>]+>/g, '')                   // all remaining tags
+                .replace(/&amp;/g, '&')
+                .replace(/&lt;/g, '<')
+                .replace(/&gt;/g, '>')
+                .replace(/&quot;/g, '"')
+                .replace(/&apos;/g, "'")
+                .replace(/\n{3,}/g, '\n\n')               // collapse excessive newlines
+                .trim();
+            if (text.length > 0) {
+                console.log(`[Document] DOCX extracted via AdmZip: ${text.length} chars`);
+                return { success: true, text, metadata: { method: 'admzip' } };
+            }
+        }
+    } catch (zipError) {
+        console.warn(`[Document] AdmZip fallback failed: ${zipError.message}`);
+    }
+
+    // ── Method 3: Raw XML scan (for partially corrupted ZIPs) ──
+    try {
+        console.log('[Document] Trying raw XML scan fallback...');
+        const rawStr = buffer.toString('utf-8', 0, Math.min(buffer.length, 5 * 1024 * 1024));
+        // Find XML text nodes: <w:t> or <w:t xml:space="preserve">
+        const textMatches = rawStr.match(/<w:t[^>]*>([^<]+)<\/w:t>/g);
+        if (textMatches && textMatches.length > 0) {
+            const text = textMatches
+                .map(m => m.replace(/<[^>]+>/g, ''))
+                .join(' ')
+                .replace(/\s{2,}/g, ' ')
+                .trim();
+            if (text.length > 10) {
+                console.log(`[Document] DOCX extracted via raw XML scan: ${text.length} chars`);
+                return { success: true, text, metadata: { method: 'raw_xml_scan' } };
+            }
+        }
+    } catch (rawError) {
+        console.warn(`[Document] Raw XML scan failed: ${rawError.message}`);
+    }
+
+    // ── Method 4: Brute-force UTF-8 (last resort) ──
+    try {
+        console.log('[Document] Trying brute-force UTF-8 decode...');
+        const rawText = buffer.toString('utf-8');
+        // Strip binary noise — keep only printable chars, newlines, tabs
+        const cleaned = rawText
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
+            .replace(/<[^>]+>/g, ' ')           // strip any XML/HTML tags
+            .replace(/PK[\x00-\xFF]{2,20}/g, '') // strip ZIP headers
+            .replace(/\s{3,}/g, ' ')
+            .trim();
+        // Only use if we got meaningful text (not just garbage)
+        const words = cleaned.split(/\s+/).filter(w => w.length >= 2 && /[a-zA-Z\u00C0-\u024F\u0400-\u04FF]/.test(w));
+        if (words.length >= 5) {
+            const text = words.join(' ');
+            console.log(`[Document] DOCX extracted via brute-force: ${text.length} chars (${words.length} words)`);
+            return { success: true, text, metadata: { method: 'brute_force', partial: true } };
+        }
+    } catch (bruteError) {
+        console.warn(`[Document] Brute-force decode failed: ${bruteError.message}`);
+    }
+
+    console.error('[Document] All DOCX extraction methods failed');
+    return { success: false, error: 'Semua metode ekstraksi DOCX gagal — file mungkin corrupt atau bukan DOCX asli', text: '', metadata: {} };
 };
 
 /**
@@ -839,10 +923,18 @@ const processDocument = async (buffer, filename, mimetype, userRequest = '', his
     const extraction = await extractText(buffer, filename, mimetype);
 
     if (!extraction.success) {
+        // For DOCX failures: attach the error details + hint about fallback
+        const isDocx = ['docx', 'docm', 'dotx'].includes(ext);
         return {
             success: false,
             error: extraction.error,
-            analysis: `duh error pas baca ${filename} 😓 ${extraction.error}`
+            analysis: isDocx
+                ? `duh DOCX nya corrupt/ga bisa dibaca bro 😓 file mungkin rusak pas di-forward WhatsApp. ${extraction.error}`
+                : `duh error pas baca ${filename} 😓 ${extraction.error}`,
+            // Pass the raw buffer so bot.js can offer a fallback
+            rawBuffer: isDocx ? buffer : null,
+            docType: type,
+            ext
         };
     }
 
@@ -850,11 +942,19 @@ const processDocument = async (buffer, filename, mimetype, userRequest = '', his
         return {
             success: false,
             error: 'No text content',
-            analysis: `hmm file ${filename} kayaknya kosong atau isinya gambar/binary doang bro 🤔`
+            analysis: `hmm file ${filename} kayaknya kosong atau isinya gambar/binary doang bro 🤔`,
+            docType: type,
+            ext
         };
     }
 
-    console.log(`[Document] Extracted ${formatSize(extraction.text.length)} text from ${filename}`);
+    console.log(`[Document] Extracted ${formatSize(extraction.text.length)} text from ${filename}${extraction.metadata?.method ? ` (method: ${extraction.metadata.method})` : ''}`);
+
+    // Warn if extraction was partial/degraded  
+    const isPartial = extraction.metadata?.partial === true || extraction.metadata?.method === 'brute_force';
+    if (isPartial) {
+        console.warn(`[Document] ⚠️ DOCX extraction was partial — quality may be degraded`);
+    }
 
     // Get AI analysis - NO TEXT LENGTH LIMITS
     try {

@@ -160,6 +160,33 @@ const {
     detectFileRequest
 } = require('./fileCreator');
 
+// ─── Helper: extract raw text from a corrupted DOCX buffer ───
+// Used as last-resort fallback when all extraction methods fail.
+// Tries to pull readable text from the binary blob so we can send it as .txt.
+const _extractRawTextFromBuffer = (buffer, filename) => {
+    try {
+        const raw = buffer.toString('utf-8', 0, Math.min(buffer.length, 5 * 1024 * 1024));
+        // Pull <w:t> text nodes from DOCX XML inside the ZIP
+        const xmlMatches = raw.match(/<w:t[^>]*>([^<]+)<\/w:t>/g);
+        if (xmlMatches && xmlMatches.length > 0) {
+            return xmlMatches.map(m => m.replace(/<[^>]+>/g, '')).join(' ').replace(/\s{2,}/g, ' ').trim();
+        }
+        // Fallback: strip all binary noise and keep printable chars
+        const cleaned = raw
+            .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/PK[\x00-\xFF]{2,20}/g, '')
+            .replace(/\s{3,}/g, ' ')
+            .trim();
+        const words = cleaned.split(/\s+/).filter(w => w.length >= 2 && /[a-zA-Z\u00C0-\u024F\u0400-\u04FF]/.test(w));
+        if (words.length >= 5) return words.join(' ');
+        return null;
+    } catch (e) {
+        console.error(`[Bot] _extractRawTextFromBuffer failed for ${filename}:`, e.message);
+        return null;
+    }
+};
+
 // Logger dengan level minimal untuk produksi
 const logger = pino({ 
     level: process.env.LOG_LEVEL || 'info',
@@ -1316,9 +1343,27 @@ const handleQuotedMediaReply = async (msg, sender, pushName, messageId, textCont
 
                 if (!result.success) {
                     await reportBugToOwner(sock, sender, pushName, result.error || result.analysis, `Quoted Document: ${filename}`, msg);
+
+                    // DOCX fallback: send raw text as .txt
+                    if (result.rawBuffer && ['docx', 'docm', 'dotx'].includes(result.ext)) {
+                        try {
+                            const fallbackText = _extractRawTextFromBuffer(result.rawBuffer, filename);
+                            if (fallbackText && fallbackText.length > 20) {
+                                const baseName = filename.replace(/\.[^.]+$/, '');
+                                await sock.sendMessage(sender, {
+                                    document: Buffer.from(fallbackText, 'utf-8'),
+                                    mimetype: 'text/plain',
+                                    fileName: `${baseName}_extracted.txt`
+                                });
+                                aiResponse = `duh DOCX nya corrupt ga bisa dibaca normal 😓 tapi w berhasil extract sebagian isinya — w kirim sebagai file .txt ya bro 📄`;
+                            }
+                        } catch (fbErr) {
+                            console.error('[Bot] DOCX fallback send failed:', fbErr.message);
+                        }
+                    }
                 }
 
-                aiResponse = result.analysis;
+                if (!aiResponse) aiResponse = result.analysis;
             } else {
                 aiResponse = `sori bro, format file "${filename}" belum ke-support buat analisis ulang 😅`;
             }
@@ -1886,9 +1931,27 @@ const handleMediaMessage = async (msg, sender, pushName, quotedContent, messageI
             // If document analysis failed, report bug to owner
             if (!result.success) {
                 await reportBugToOwner(sock, sender, pushName, result.error || result.analysis, `Document Analysis: ${filename}`, msg);
+                
+                // DOCX fallback: try to send extracted raw text as .txt file
+                if (result.rawBuffer && ['docx', 'docm', 'dotx'].includes(result.ext)) {
+                    try {
+                        const fallbackText = _extractRawTextFromBuffer(result.rawBuffer, filename);
+                        if (fallbackText && fallbackText.length > 20) {
+                            const baseName = filename.replace(/\.[^.]+$/, '');
+                            await sock.sendMessage(sender, {
+                                document: Buffer.from(fallbackText, 'utf-8'),
+                                mimetype: 'text/plain',
+                                fileName: `${baseName}_extracted.txt`
+                            });
+                            aiResponse = `duh DOCX nya corrupt ga bisa dibaca normal 😓 tapi w berhasil extract sebagian isinya — w kirim sebagai file .txt ya bro 📄`;
+                        }
+                    } catch (fbErr) {
+                        console.error('[Bot] DOCX fallback send failed:', fbErr.message);
+                    }
+                }
             }
             
-            aiResponse = result.analysis;
+            if (!aiResponse) aiResponse = result.analysis;
         }
         // Handle other documents
         else if (mediaType === 'document') {

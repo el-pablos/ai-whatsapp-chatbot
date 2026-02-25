@@ -219,7 +219,7 @@ describe('documentHandler - Universal Document Reader', () => {
     });
 
     describe('extractDocxText', () => {
-        it('should handle invalid DOCX buffer', async () => {
+        it('should handle invalid DOCX buffer gracefully (all fallbacks fail)', async () => {
             const invalidBuffer = Buffer.from('not a docx');
             const result = await extractDocxText(invalidBuffer);
             
@@ -232,6 +232,52 @@ describe('documentHandler - Universal Document Reader', () => {
             const result = await extractDocxText(emptyBuffer);
             
             expect(result.success).toBe(false);
+        });
+
+        it('should extract text via raw XML scan when mammoth and AdmZip fail', async () => {
+            // Simulate a corrupted DOCX: not a valid ZIP, but contains DOCX XML fragments
+            const fakeXml = '<w:t>Hello</w:t> <w:t>World</w:t> <w:t>This</w:t> <w:t>is</w:t> <w:t>a</w:t> <w:t>test</w:t> <w:t>document</w:t>';
+            const corruptBuffer = Buffer.from('PK_NOT_VALID_ZIP_' + fakeXml + '_MORE_JUNK');
+            const result = await extractDocxText(corruptBuffer);
+
+            expect(result.success).toBe(true);
+            expect(result.text).toContain('Hello');
+            expect(result.text).toContain('World');
+            expect(result.metadata.method).toBe('raw_xml_scan');
+        });
+
+        it('should return metadata.method for each successful extraction path', async () => {
+            // Raw XML fallback
+            const xmlParts = Array.from({ length: 12 }, (_, i) => `<w:t>Word${i}</w:t>`).join(' ');
+            const buf = Buffer.from('GARBAGE_ZIP_HEADER' + xmlParts);
+            const result = await extractDocxText(buf);
+            
+            expect(result.success).toBe(true);
+            expect(result.metadata.method).toBeDefined();
+            expect(['mammoth', 'admzip', 'raw_xml_scan', 'brute_force']).toContain(result.metadata.method);
+        });
+
+        it('should fail gracefully for pure binary data with no text', async () => {
+            // Pure high-byte binary noise — no printable ASCII words at all
+            const binaryBuf = Buffer.alloc(512);
+            for (let i = 0; i < 512; i++) binaryBuf[i] = 0x80 + (i % 64); // all non-ASCII bytes
+            const result = await extractDocxText(binaryBuf);
+            
+            expect(result.success).toBe(false);
+            expect(result.text).toBe('');
+        });
+
+        it('should extract via brute-force when buffer has readable words but no XML tags', async () => {
+            // Buffer with enough readable words but no w:t tags
+            const readableText = 'The quick brown fox jumps over the lazy dog and runs through the forest';
+            const mixedBuffer = Buffer.from('\x00\x01\x02' + readableText + '\x00\x03\x04');
+            const result = await extractDocxText(mixedBuffer);
+
+            // Should succeed via brute_force since there are >=5 words
+            expect(result.success).toBe(true);
+            expect(result.metadata.method).toBe('brute_force');
+            expect(result.text).toContain('quick');
+            expect(result.text).toContain('brown');
         });
     });
 
@@ -372,6 +418,45 @@ describe('documentHandler - Universal Document Reader', () => {
             const result = await processDocument(buffer, 'broken.pdf', 'application/pdf');
 
             expect(result.success).toBe(false);
+        });
+
+        it('should return rawBuffer and ext for failed DOCX extraction', async () => {
+            // Completely invalid buffer that all DOCX extraction methods will fail on
+            const buffer = Buffer.alloc(64, 0xFF);
+            const result = await processDocument(buffer, 'corrupt.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+
+            expect(result.success).toBe(false);
+            expect(result.ext).toBe('docx');
+            expect(result.rawBuffer).toBeDefined();
+            expect(Buffer.isBuffer(result.rawBuffer)).toBe(true);
+            expect(result.analysis).toContain('corrupt');
+        });
+
+        it('should NOT return rawBuffer for non-DOCX failures', async () => {
+            const buffer = Buffer.from('invalid pdf content');
+            const result = await processDocument(buffer, 'broken.pdf', 'application/pdf');
+
+            expect(result.success).toBe(false);
+            expect(result.rawBuffer).toBeFalsy();
+        });
+
+        it('should successfully process corrupted DOCX with embedded XML via fallback', async () => {
+            axios.post.mockResolvedValue({
+                data: {
+                    choices: [{
+                        message: { content: 'Analisis dokumen DOCX fallback...' }
+                    }]
+                }
+            });
+
+            // Build a buffer that is NOT a valid ZIP but contains DOCX XML fragments
+            const xmlContent = Array.from({ length: 15 }, (_, i) => `<w:t>Kata${i}</w:t>`).join(' ');
+            const corruptDocx = Buffer.from('PK_CORRUPT_ZIP' + xmlContent + '_END');
+            const result = await processDocument(corruptDocx, 'forwarded.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+
+            // Should succeed because raw_xml_scan fallback extracts text
+            expect(result.success).toBe(true);
+            expect(result.analysis).toContain('Analisis dokumen DOCX fallback');
         });
     });
 
