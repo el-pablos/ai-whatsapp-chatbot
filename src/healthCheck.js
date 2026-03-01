@@ -46,7 +46,8 @@ const startHealthCheckServer = () => {
                     status: '/status',
                     dashboard: '/dashboard',
                     users: '/users',
-                    stats: '/stats'
+                    stats: '/stats',
+                    capabilities: '/capabilities'
                 }
             });
         });
@@ -158,6 +159,21 @@ const startHealthCheckServer = () => {
                     status: 'error',
                     message: 'Failed to load users'
                 });
+            }
+        });
+
+        // Capabilities endpoint — dependency status check
+        app.get('/capabilities', (req, res) => {
+            try {
+                const { getSummary } = require('./capabilities');
+                const summary = getSummary();
+                res.status(200).json({
+                    status: summary.fail === 0 ? 'ok' : 'degraded',
+                    ...summary,
+                });
+            } catch (error) {
+                console.error('[Capabilities] Error:', error.message);
+                res.status(500).json({ status: 'error', message: error.message });
             }
         });
 

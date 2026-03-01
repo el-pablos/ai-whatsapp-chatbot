@@ -21,10 +21,16 @@ const DEP_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour for dependency-missing errors
 const isDependencyMissing = (errorMessage) => {
     if (!errorMessage) return false;
     const patterns = [
-        /(libreoffice|soffice|ffmpeg|yt-dlp|pdftotext|ebook-convert|calibre|pandoc): not found/i,
+        /(libreoffice|soffice|ffmpeg|yt-dlp|pdftotext|ebook-convert|calibre|pandoc|djvutxt|unrar|unzip|7z|tar|zcat|curl|pip3): not found/i,
         /command not found/i,
         /exit code 127/i,
-        /ENOENT.*(?:libreoffice|soffice|ffmpeg|yt-dlp|pdftotext)/i,
+        /ENOENT.*(?:libreoffice|soffice|ffmpeg|yt-dlp|pdftotext|ebook-convert|djvutxt|unrar|7z)/i,
+        /install unrar to see contents/i,
+        /install p7zip to see contents/i,
+        /install calibre/i,
+        /install djvulibre/i,
+        /install poppler/i,
+        /install libreoffice/i,
     ];
     return patterns.some(p => p.test(errorMessage));
 };
