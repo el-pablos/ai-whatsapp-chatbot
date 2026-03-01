@@ -219,8 +219,8 @@ const isSupportedDocument = (filename, mimetype) => {
  */
 const extractPdfText = async (buffer) => {
     try {
-        if (!pdfParse) {
-            throw new Error('pdf-parse module not available');
+        if (!pdfParse || typeof pdfParse !== 'function') {
+            throw new Error('pdf-parse module not available or not callable');
         }
         console.log(`[Document] Extracting PDF text, buffer size: ${buffer.length}`);
         const data = await pdfParse(buffer);
@@ -857,6 +857,13 @@ RULES:
                 } catch (retryError) {
                     const status = retryError.response?.status;
                     console.error(`[Document] Chunk ${i + 1}/${chunks.length} attempt ${attempt + 1} failed: ${retryError.message}`);
+                    // Don't retry on auth/quota errors — they won't resolve by retrying
+                    if (status === 401 || status === 402 || status === 403) {
+                        const authMsg = status === 401 ? 'Token expired — perlu refresh token Copilot API'
+                            : status === 402 ? 'Quota habis — Copilot API quota exceeded'
+                            : 'Access denied — cek konfigurasi API';
+                        throw new Error(authMsg);
+                    }
                     if (attempt < MAX_RETRIES - 1 && (status === 500 || status === 429 || status === 502 || status === 503)) {
                         const delay = Math.pow(2, attempt + 1) * 2000; // 4s, 8s, 16s
                         console.log(`[Document] Retrying in ${delay / 1000}s...`);

@@ -332,6 +332,31 @@ describe('documentHandler - Universal Document Reader', () => {
             ).rejects.toThrow('Gagal menganalisis dokumen dengan AI');
         });
 
+        it('should bail immediately on 401 without retrying', async () => {
+            const err401 = new Error('Request failed with status code 401');
+            err401.response = { status: 401, data: { error: { message: 'unauthorized: token expired' } } };
+            axios.post.mockRejectedValue(err401);
+
+            await expect(
+                analyzeDocumentWithAI('text', 'file.pdf', '', [])
+            ).rejects.toThrow('Token expired');
+
+            // Should have called API only ONCE (no retries)
+            expect(axios.post).toHaveBeenCalledTimes(1);
+        });
+
+        it('should bail immediately on 402 without retrying', async () => {
+            const err402 = new Error('Request failed with status code 402');
+            err402.response = { status: 402, data: { error: { message: 'quota exceeded' } } };
+            axios.post.mockRejectedValue(err402);
+
+            await expect(
+                analyzeDocumentWithAI('text', 'file.pdf', '', [])
+            ).rejects.toThrow('Quota habis');
+
+            expect(axios.post).toHaveBeenCalledTimes(1);
+        });
+
         it('should NOT include chat history to avoid context overflow', async () => {
             axios.post.mockResolvedValue({
                 data: {
