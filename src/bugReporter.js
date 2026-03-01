@@ -13,6 +13,21 @@ const OWNER_JID = `${process.env.BUG_REPORT_OWNER || '6285817378442'}@s.whatsapp
 // Cooldown tracking to avoid spam (same error within 5 minutes)
 const reportedBugs = new Map();
 const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
+const DEP_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour for dependency-missing errors
+
+/**
+ * Check if an error is a missing system dependency (not a code bug)
+ */
+const isDependencyMissing = (errorMessage) => {
+    if (!errorMessage) return false;
+    const patterns = [
+        /(libreoffice|soffice|ffmpeg|yt-dlp|pdftotext|ebook-convert|calibre|pandoc): not found/i,
+        /command not found/i,
+        /exit code 127/i,
+        /ENOENT.*(?:libreoffice|soffice|ffmpeg|yt-dlp|pdftotext)/i,
+    ];
+    return patterns.some(p => p.test(errorMessage));
+};
 
 /**
  * Send a bug report to the owner via WhatsApp
@@ -30,11 +45,14 @@ const reportBugToOwner = async (sock, sender, pushName, error, context, msg = nu
 
     const errorMessage = typeof error === 'string' ? error : (error?.message || 'Unknown error');
     const errorStack = typeof error === 'object' ? (error?.stack || '') : '';
+    const isDepMissing = isDependencyMissing(errorMessage);
 
     // Cooldown check - don't spam same error
+    // Use longer cooldown (1 hour) for dependency-missing to avoid spam
+    const cooldown = isDepMissing ? DEP_COOLDOWN_MS : COOLDOWN_MS;
     const bugKey = `${context}:${errorMessage}`;
     const lastReported = reportedBugs.get(bugKey);
-    if (lastReported && Date.now() - lastReported < COOLDOWN_MS) {
+    if (lastReported && Date.now() - lastReported < cooldown) {
         console.log(`[BugReport] Skipping duplicate report (cooldown): ${bugKey}`);
         return;
     }
@@ -54,8 +72,29 @@ const reportBugToOwner = async (sock, sender, pushName, error, context, msg = nu
         timeStyle: 'medium'
     });
 
-    // Format bug report for owner
-    const bugReport = `wet w nemu bug, w lapor king Tama dulu ya 🐛
+    // Format report differently for dependency-missing vs real bugs
+    let bugReport, userNotification;
+
+    if (isDepMissing) {
+        // --- Dependency missing: NOT a code bug ---
+        bugReport = `⚠️ *MISSING DEPENDENCY on server*
+
+🔧 *Dependency:* ${errorMessage}
+
+📍 *Context:* ${context}
+👤 *User:* ${pushName} (${sender.replace('@s.whatsapp.net', '')})
+🕐 *Waktu:* ${timestamp}
+
+_Install yang dibutuhkan di server lalu restart bot._`;
+
+        userNotification = `⚠️ Fitur ini butuh software tambahan di server yang belum ter-install.
+
+*Info:* _${errorMessage}_
+
+💡 *Solusi:* Admin perlu install dependency yang dibutuhkan di server. Laporan otomatis sudah dikirim ke owner. 🔧`;
+    } else {
+        // --- Real bug ---
+        bugReport = `wet w nemu bug, w lapor king Tama dulu ya 🐛
 
 *🔴 BUG REPORTED:* ${errorMessage}
 
@@ -66,13 +105,13 @@ ${errorStack ? `\n📋 *Stack Trace:*\n\`\`\`\n${errorStack.substring(0, 500)}\n
 
 _*⚠️ broadcast message dont reply, reporting to owner*_`;
 
-    // Notify user that the bug is being reported
-    const userNotification = `😓 waduh error nih bro, tapi tenang w udah otomatis laporin bug nya ke owner buat di fix 🔧
+        userNotification = `😓 waduh error nih bro, tapi tenang w udah otomatis laporin bug nya ke owner buat di fix 🔧
 
 *🐛 Bug:* _${errorMessage}_
 
 📨 _Laporan lagi dikirim ke owner..._
 💡 *Tips:* kalo bisa, confirm juga ke owner langsung biar dia cepet notice dan fix bug nya ya! 🙏`;
+    }
 
     try {
         // Send bug report to owner
@@ -102,5 +141,6 @@ const clearBugCooldowns = () => {
 module.exports = {
     reportBugToOwner,
     clearBugCooldowns,
+    isDependencyMissing,
     OWNER_JID
 };
