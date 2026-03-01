@@ -202,6 +202,47 @@ const ensureFfmpeg = () => {
 };
 
 // ═══════════════════════════════════════════════════════════
+// 3b. PDFTOTEXT (poppler-utils) — PDF fallback extraction
+// ═══════════════════════════════════════════════════════════
+
+const ensurePdftotext = () => {
+    if (commandExists('pdftotext')) {
+        log('pdftotext: installed ✅');
+        return;
+    }
+
+    log('Installing poppler-utils (pdftotext)...');
+
+    if (commandExists('apt-get')) {
+        const ok = run('apt-get update -qq 2>/dev/null && apt-get install -y -qq poppler-utils 2>/dev/null', {
+            timeout: 120000,
+        });
+        if (ok && commandExists('pdftotext')) {
+            log('pdftotext installed via apt ✅');
+            return;
+        }
+    }
+
+    if (commandExists('yum')) {
+        run('yum install -y -q poppler-utils 2>/dev/null', { timeout: 120000 });
+        if (commandExists('pdftotext')) {
+            log('pdftotext installed via yum ✅');
+            return;
+        }
+    }
+
+    if (commandExists('apk')) {
+        run('apk add --quiet poppler-utils 2>/dev/null', { timeout: 120000 });
+        if (commandExists('pdftotext')) {
+            log('pdftotext installed via apk ✅');
+            return;
+        }
+    }
+
+    warn('pdftotext not available — PDF extraction will rely on pdf-parse only');
+};
+
+// ═══════════════════════════════════════════════════════════
 // 4. REQUIRED DIRECTORIES
 // ═══════════════════════════════════════════════════════════
 
@@ -237,6 +278,7 @@ const runAutoSetup = () => {
         ensureNpmDeps();
         ensureYtDlp();
         ensureFfmpeg();
+        ensurePdftotext();
     } catch (e) {
         warn(`Unexpected error: ${e.message}`);
     }
@@ -247,13 +289,14 @@ const runAutoSetup = () => {
     console.log('╔═══════════════════════════════════════════════════════════╗');
     console.log('║          📋 AUTO-SETUP COMPLETE                          ║');
     console.log('╠═══════════════════════════════════════════════════════════╣');
-    console.log(`║  yt-dlp  : ${commandExists('yt-dlp') ? '✅ ready' : '❌ missing'}                                    ║`);
-    console.log(`║  ffmpeg  : ${commandExists('ffmpeg') ? '✅ ready' : '❌ missing'}                                    ║`);
-    console.log(`║  elapsed : ${elapsed}s                                          ║`);
+    console.log(`║  yt-dlp    : ${commandExists('yt-dlp') ? '✅ ready' : '❌ missing'}                                    ║`);
+    console.log(`║  ffmpeg    : ${commandExists('ffmpeg') ? '✅ ready' : '❌ missing'}                                    ║`);
+    console.log(`║  pdftotext : ${commandExists('pdftotext') ? '✅ ready' : '❌ missing'}                                    ║`);
+    console.log(`║  elapsed   : ${elapsed}s                                          ║`);
     console.log('╚═══════════════════════════════════════════════════════════╝');
 };
 
 // Execute immediately when required
 runAutoSetup();
 
-module.exports = { runAutoSetup, commandExists, getVersion };
+module.exports = { runAutoSetup, commandExists, getVersion, ensurePdftotext };
