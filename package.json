@@ -11,7 +11,7 @@
     "setup": "bash scripts/bootstrap.sh && node src/bot.js",
     "test": "jest --coverage --verbose",
     "test:watch": "jest --watch",
-    "doctor": "node tests/smoke.test.js"
+    "doctor": "node scripts/doctor.js"
   },
   "keywords": [
     "whatsapp",
