@@ -234,6 +234,21 @@ for (const { cmd, label, install } of optionalBinaries) {
     });
 }
 
+// LibreOffice — special check: warn-only, with resolution info
+check('[optional] LibreOffice (PPT/PPTX/ODT/DOC conversion)', () => {
+    const hasLibreoffice = commandExists('libreoffice');
+    const hasSoffice = commandExists('soffice');
+    if (hasLibreoffice || hasSoffice) {
+        const which = hasLibreoffice ? 'libreoffice' : 'soffice';
+        console.log(`      ✅ Found as: ${which}`);
+    } else {
+        console.log('      ⚠️  LibreOffice missing — PPT/PPTX/DOC/ODT conversion akan pakai fallback terbatas.');
+        console.log('         PPTX: fallback XML parser (teks saja, tanpa layout)');
+        console.log('         PPT/DOC/ODT: tidak bisa diproses tanpa LibreOffice');
+        console.log('         Install: apt install libreoffice-core libreoffice-impress');
+    }
+});
+
 // ─── Summary ────────────────────────────────────────────
 
 console.log('\n' + '═'.repeat(50));
