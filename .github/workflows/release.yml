@@ -1,0 +1,88 @@
+name: Auto Release
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+        env:
+          COPILOT_API_URL: http://localhost:4141/v1/chat/completions
+          COPILOT_API_MODEL: gpt-4o
+          WA_AUTH_METHOD: qr
+          NODE_ENV: test
+
+      - name: Get version from package.json
+        id: pkg
+        run: echo "version=$(node -p \"require('./package.json').version\")" >> $GITHUB_OUTPUT
+
+      - name: Get commit message
+        id: commit
+        run: echo "message=$(git log -1 --pretty=%s)" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          echo "## Perubahan" > CHANGELOG_BODY.md
+          echo "" >> CHANGELOG_BODY.md
+          # Ambil commit sejak tag terakhir, atau 20 commit terakhir
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG_BODY.md
+          else
+            git log --max-count=20 --pretty=format:"- %s (%h)" >> CHANGELOG_BODY.md
+          fi
+          echo "" >> CHANGELOG_BODY.md
+          echo "" >> CHANGELOG_BODY.md
+          echo "---" >> CHANGELOG_BODY.md
+          echo "*Auto-generated release from commit \`$(git rev-parse --short HEAD)\`*" >> CHANGELOG_BODY.md
+
+      - name: Check if tag exists
+        id: check_tag
+        run: |
+          if git rev-parse "v${{ steps.pkg.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Git tag
+        if: steps.check_tag.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ steps.pkg.outputs.version }}" -m "Release v${{ steps.pkg.outputs.version }}"
+          git push origin "v${{ steps.pkg.outputs.version }}"
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ steps.pkg.outputs.version }}"
+          name: "v${{ steps.pkg.outputs.version }}"
+          body_path: CHANGELOG_BODY.md
+          draft: false
+          prerelease: false
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
