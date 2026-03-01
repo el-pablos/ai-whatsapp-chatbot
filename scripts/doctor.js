@@ -3,7 +3,7 @@
  * Doctor Check — Standalone health diagnostic
  *
  * Verifies that all modules load, exports are present,
- * and external dependencies are detectable.
+ * and external dependencies are detectable (via capabilities registry).
  * 
  * Runs with plain `node` (no Jest needed).
  *
@@ -11,7 +11,7 @@
  *         npm run doctor
  *
  * @author Tama El Pablo
- * @version 1.1.0
+ * @version 2.0.0
  */
 
 const path = require('path');
@@ -186,7 +186,7 @@ check('package.json is valid', () => {
     if (pkg.name !== 'ai-whatsapp-chatbot') throw new Error('wrong package name');
 });
 
-// ─── External dependency checks ─────────────────────────
+// ─── External dependency checks (via Capabilities Registry) ─
 
 console.log('\n🔧 Doctor Check — External Dependencies\n');
 
@@ -202,52 +202,32 @@ check('node_modules exists', () => {
     }
 });
 
-check('better-sqlite3 native binding', () => {
-    try {
-        require('better-sqlite3');
-    } catch (e) {
-        if (e.message.includes('Could not locate the bindings file')) {
-            throw new Error('better-sqlite3 not built — run: npm rebuild better-sqlite3 --build-from-source');
-        }
-        throw e;
-    }
-});
+// Run capability registry checks
+const { checkAll } = requireSrc('capabilities');
+const capResults = checkAll();
 
-check('pdf-parse callable', () => {
-    const m = requireSrc('documentHandler');
-    // extractPdfText is exported — verify it exists
-    if (typeof m.extractPdfText !== 'function') throw new Error('extractPdfText not exported');
-});
+console.log('\n📋 Doctor Check — Capability Registry\n');
 
-const optionalBinaries = [
-    { cmd: 'ffmpeg', label: 'ffmpeg (audio/video conversion)', install: 'apt install ffmpeg' },
-    { cmd: 'yt-dlp', label: 'yt-dlp (YouTube downloads)', install: 'pip3 install yt-dlp' },
-    { cmd: 'pdftotext', label: 'pdftotext (PDF fallback)', install: 'apt install poppler-utils' },
-];
-
-for (const { cmd, label, install } of optionalBinaries) {
-    check(`[optional] ${label}`, () => {
-        if (!commandExists(cmd)) {
-            // Not a failure — just a warning
-            console.log(`      ⚠️  Not found. Install: ${install}`);
-        }
-    });
-}
-
-// LibreOffice — special check: warn-only, with resolution info
-check('[optional] LibreOffice (PPT/PPTX/ODT/DOC conversion)', () => {
-    const hasLibreoffice = commandExists('libreoffice');
-    const hasSoffice = commandExists('soffice');
-    if (hasLibreoffice || hasSoffice) {
-        const which = hasLibreoffice ? 'libreoffice' : 'soffice';
-        console.log(`      ✅ Found as: ${which}`);
+for (const cap of capResults) {
+    if (cap.ok) {
+        const extra = cap.detectedAs ? ` (${cap.detectedAs})` : '';
+        check(`[${cap.level}] ${cap.name} — ${cap.feature}`, () => {
+            // pass — already checked
+            if (cap.detectedAs) console.log(`      ✅ Found as: ${cap.detectedAs}`);
+        });
+    } else if (cap.level === 'required') {
+        // Required deps that are missing should FAIL the doctor
+        check(`[${cap.level}] ${cap.name} — ${cap.feature}`, () => {
+            throw new Error(`${cap.error}. Fix: ${cap.installHints[0]}`);
+        });
     } else {
-        console.log('      ⚠️  LibreOffice missing — PPT/PPTX/DOC/ODT conversion akan pakai fallback terbatas.');
-        console.log('         PPTX: fallback XML parser (teks saja, tanpa layout)');
-        console.log('         PPT/DOC/ODT: tidak bisa diproses tanpa LibreOffice');
-        console.log('         Install: apt install libreoffice-core libreoffice-impress');
+        // Warn-only deps: pass the check but print warning
+        check(`[${cap.level}] ${cap.name} — ${cap.feature}`, () => {
+            console.log(`      ⚠️  ${cap.error}`);
+            console.log(`         Install: ${cap.installHints[0]}`);
+        });
     }
-});
+}
 
 // ─── Summary ────────────────────────────────────────────
 
