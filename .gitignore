@@ -1,6 +1,6 @@
 # Dependencies
 node_modules/
-.claude
+.claude/
 
 # Environment variables (NEVER commit!)
 .env
