@@ -10,13 +10,13 @@
  * - Interactive button selection
  */
 
-const { exec, spawn } = require('child_process');
+const { execFile } = require('child_process');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
 const { promisify } = require('util');
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Constants
 const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141';
@@ -76,8 +76,8 @@ const detectYoutubeUrl = (text) => {
  */
 const getVideoInfo = async (url) => {
     try {
-        const { stdout } = await execAsync(
-            `yt-dlp --dump-json --no-warnings "${url}"`,
+        const { stdout } = await execFileAsync(
+            'yt-dlp', ['--dump-json', '--no-warnings', url],
             { timeout: 30000, maxBuffer: 10 * 1024 * 1024 }
         );
         
@@ -195,9 +195,9 @@ const downloadAsMP3 = async (url, videoId) => {
 
         console.log(`[YouTube] Downloading MP3: ${url}`);
         
-        // Download with yt-dlp
-        const { stdout, stderr } = await execAsync(
-            `yt-dlp -x --audio-format mp3 --audio-quality 0 -o "${outputPath}" --no-playlist --max-filesize 50M "${url}"`,
+        // Download with yt-dlp (using execFile to prevent command injection)
+        await execFileAsync(
+            'yt-dlp', ['-x', '--audio-format', 'mp3', '--audio-quality', '0', '-o', outputPath, '--no-playlist', '--max-filesize', '50M', url],
             { timeout: 300000 } // 5 min timeout
         );
 
@@ -260,9 +260,9 @@ const downloadAsMP4 = async (url, videoId) => {
 
         console.log(`[YouTube] Downloading MP4: ${url}`);
         
-        // Download best quality under 50MB
-        const { stdout, stderr } = await execAsync(
-            `yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" --merge-output-format mp4 -o "${outputPath}" --no-playlist --max-filesize 50M "${url}"`,
+        // Download best quality under 50MB (using execFile to prevent command injection)
+        await execFileAsync(
+            'yt-dlp', ['-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', '--merge-output-format', 'mp4', '-o', outputPath, '--no-playlist', '--max-filesize', '50M', url],
             { timeout: 600000 } // 10 min timeout
         );
 
@@ -384,9 +384,9 @@ const parseFormatResponse = (responseId) => {
  */
 const commandExists = async (cmd) => {
     const isWin = process.platform === 'win32';
-    const checkCmd = isWin ? `where ${cmd}` : `which ${cmd}`;
+    const checkCmd = isWin ? 'where' : 'which';
     try {
-        await execAsync(checkCmd, { timeout: 5000 });
+        await execFileAsync(checkCmd, [cmd], { timeout: 5000 });
         return true;
     } catch {
         return false;

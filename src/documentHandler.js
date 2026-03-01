@@ -43,12 +43,11 @@ const mammoth = require('mammoth');
 const axios = require('axios');
 const fs = require('fs').promises;
 const path = require('path');
-const { exec } = require('child_process');
+const { execFile, execSync } = require('child_process');
 const { promisify } = require('util');
 const AdmZip = require('adm-zip');
 
-const { execSync } = require('child_process');
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Constants
 const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141';
@@ -328,7 +327,7 @@ const extractPdfText = async (buffer) => {
             await ensureTempDir();
             const tempPath = path.join(TEMP_DIR, `temp_${Date.now()}.pdf`);
             await fs.writeFile(tempPath, buffer);
-            const { stdout } = await execAsync(`pdftotext -layout "${tempPath}" -`, { maxBuffer: 500 * 1024 * 1024 });
+            const { stdout } = await execFileAsync('pdftotext', ['-layout', tempPath, '-'], { maxBuffer: 500 * 1024 * 1024 });
             await cleanupTemp(tempPath);
             console.log(`[Document] pdftotext succeeded: ${stdout?.length || 0} chars`);
             return { success: true, text: stdout, metadata: {} };
@@ -450,12 +449,12 @@ const extractDocText = async (buffer) => {
         
         // Try antiword first
         try {
-            const { stdout } = await execAsync(`antiword "${tempPath}"`, { maxBuffer: 500 * 1024 * 1024 });
+            const { stdout } = await execFileAsync('antiword', [tempPath], { maxBuffer: 500 * 1024 * 1024 });
             await cleanupTemp(tempPath);
             return { success: true, text: stdout, metadata: {} };
         } catch {
             // Fallback to catdoc
-            const { stdout } = await execAsync(`catdoc "${tempPath}"`, { maxBuffer: 500 * 1024 * 1024 });
+            const { stdout } = await execFileAsync('catdoc', [tempPath], { maxBuffer: 500 * 1024 * 1024 });
             await cleanupTemp(tempPath);
             return { success: true, text: stdout, metadata: {} };
         }
@@ -488,7 +487,7 @@ const extractOfficeText = async (buffer, ext) => {
         await fs.writeFile(tempPath, buffer);
         
         // Convert to text using resolved LibreOffice binary
-        await execAsync(`${officeBin} --headless --convert-to txt:Text --outdir "${TEMP_DIR}" "${tempPath}"`, 
+        await execFileAsync(officeBin, ['--headless', '--convert-to', 'txt:Text', '--outdir', TEMP_DIR, tempPath],
             { timeout: 120000, maxBuffer: 500 * 1024 * 1024 });
         
         const text = await fs.readFile(txtPath, 'utf-8');
@@ -523,7 +522,7 @@ const extractPresentationText = async (buffer, ext) => {
         try {
             await fs.writeFile(tempPath, buffer);
 
-            await execAsync(`${officeBin} --headless --convert-to pdf --outdir "${TEMP_DIR}" "${tempPath}"`,
+            await execFileAsync(officeBin, ['--headless', '--convert-to', 'pdf', '--outdir', TEMP_DIR, tempPath],
                 { timeout: 180000, maxBuffer: 500 * 1024 * 1024 });
 
             const pdfBuffer = await fs.readFile(pdfPath);
@@ -570,7 +569,7 @@ const extractEbookText = async (buffer, ext) => {
         await fs.writeFile(tempPath, buffer);
         
         // Use ebook-convert from Calibre
-        await execAsync(`ebook-convert "${tempPath}" "${txtPath}"`, 
+        await execFileAsync('ebook-convert', [tempPath, txtPath],
             { timeout: 180000, maxBuffer: 500 * 1024 * 1024 });
         
         const text = await fs.readFile(txtPath, 'utf-8');
@@ -631,7 +630,7 @@ const extractDjvuText = async (buffer) => {
     
     try {
         await fs.writeFile(tempPath, buffer);
-        const { stdout } = await execAsync(`djvutxt "${tempPath}"`, { maxBuffer: 500 * 1024 * 1024 });
+        const { stdout } = await execFileAsync('djvutxt', [tempPath], { maxBuffer: 500 * 1024 * 1024 });
         await cleanupTemp(tempPath);
         return { success: true, text: stdout, metadata: {} };
     } catch (error) {
@@ -694,13 +693,13 @@ const extractArchiveContents = async (buffer, ext, filename) => {
                 }
             } catch (e) {
                 // Fallback to unzip command
-                const { stdout } = await execAsync(`unzip -l "${tempPath}"`, { maxBuffer: 100 * 1024 * 1024 });
+                const { stdout } = await execFileAsync('unzip', ['-l', tempPath], { maxBuffer: 100 * 1024 * 1024 });
                 fileList = stdout.split('\n').filter(l => l.trim()).map(l => ({ name: l.trim() }));
             }
         } else if (ext === 'rar' || ext === 'cbr') {
             // Use unrar command
             try {
-                const { stdout } = await execAsync(`unrar l "${tempPath}"`, { maxBuffer: 100 * 1024 * 1024 });
+                const { stdout } = await execFileAsync('unrar', ['l', tempPath], { maxBuffer: 100 * 1024 * 1024 });
                 const lines = stdout.split('\n');
                 for (const line of lines) {
                     const match = line.match(/^\s*(\d+)\s+\d+\s+\d+%\s+[\d-]+\s+[\d:]+\s+(.+)$/);
@@ -717,7 +716,7 @@ const extractArchiveContents = async (buffer, ext, filename) => {
         } else if (ext.includes('tar') || ext === 'tgz' || ext === 'tbz' || ext === 'tbz2' || ext === 'txz') {
             // Use tar command
             try {
-                const { stdout } = await execAsync(`tar -tvf "${tempPath}"`, { maxBuffer: 100 * 1024 * 1024 });
+                const { stdout } = await execFileAsync('tar', ['-tvf', tempPath], { maxBuffer: 100 * 1024 * 1024 });
                 const lines = stdout.split('\n').filter(l => l.trim());
                 for (const line of lines) {
                     const parts = line.split(/\s+/);
@@ -729,12 +728,12 @@ const extractArchiveContents = async (buffer, ext, filename) => {
                 }
             } catch (e) {
                 // Try simple list
-                const { stdout } = await execAsync(`tar -tf "${tempPath}"`, { maxBuffer: 100 * 1024 * 1024 });
+                const { stdout } = await execFileAsync('tar', ['-tf', tempPath], { maxBuffer: 100 * 1024 * 1024 });
                 fileList = stdout.split('\n').filter(l => l.trim()).map(name => ({ name }));
             }
         } else if (ext === '7z') {
             try {
-                const { stdout } = await execAsync(`7z l "${tempPath}"`, { maxBuffer: 100 * 1024 * 1024 });
+                const { stdout } = await execFileAsync('7z', ['l', tempPath], { maxBuffer: 100 * 1024 * 1024 });
                 const lines = stdout.split('\n');
                 let inList = false;
                 for (const line of lines) {
@@ -759,7 +758,7 @@ const extractArchiveContents = async (buffer, ext, filename) => {
         } else if (ext === 'gz' && !filename.includes('.tar.')) {
             // Single gzipped file
             try {
-                const { stdout } = await execAsync(`zcat "${tempPath}"`, { maxBuffer: 500 * 1024 * 1024 });
+                const { stdout } = await execFileAsync('zcat', [tempPath], { maxBuffer: 500 * 1024 * 1024 });
                 await cleanupTemp(tempPath);
                 return { 
                     success: true, 

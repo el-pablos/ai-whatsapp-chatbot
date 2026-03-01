@@ -12,9 +12,9 @@
 
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Config
 const TEMP_DIR = path.join(process.cwd(), 'temp_sticker');
@@ -92,9 +92,12 @@ const imageToSticker = async (imageBuffer, mimetype = 'image/jpeg') => {
         
         // Convert to WebP with proper sticker dimensions (512x512 max)
         // Using ffmpeg for better quality
-        await execAsync(
-            `ffmpeg -i "${inputPath}" -vf "scale='if(gt(iw,ih),512,-1)':'if(gt(iw,ih),-1,512)',pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000" -c:v libwebp -lossless 0 -quality 80 -loop 0 "${outputPath}" -y`
-        );
+        await execFileAsync('ffmpeg', [
+            '-i', inputPath,
+            '-vf', "scale='if(gt(iw,ih),512,-1)':'if(gt(iw,ih),-1,512)',pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000",
+            '-c:v', 'libwebp', '-lossless', '0', '-quality', '80', '-loop', '0',
+            outputPath, '-y'
+        ]);
         
         // Read output
         const stickerBuffer = fs.readFileSync(outputPath);
@@ -133,17 +136,27 @@ const videoToSticker = async (videoBuffer, mimetype = 'video/mp4') => {
         
         // Convert to animated WebP (max 6 seconds, 10fps for smaller size)
         // WhatsApp animated sticker limit: ~1MB, 512x512
-        await execAsync(
-            `ffmpeg -i "${inputPath}" -t 6 -vf "fps=10,scale='if(gt(iw,ih),512,-1)':'if(gt(iw,ih),-1,512)',pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000" -c:v libwebp -lossless 0 -quality 60 -loop 0 -preset default -an "${outputPath}" -y`
-        );
+        await execFileAsync('ffmpeg', [
+            '-i', inputPath,
+            '-t', '6',
+            '-vf', "fps=10,scale='if(gt(iw,ih),512,-1)':'if(gt(iw,ih),-1,512)',pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000",
+            '-c:v', 'libwebp', '-lossless', '0', '-quality', '60', '-loop', '0',
+            '-preset', 'default', '-an',
+            outputPath, '-y'
+        ]);
         
         // Check file size (WhatsApp limit ~1MB for animated)
         const stats = fs.statSync(outputPath);
         if (stats.size > 1024 * 1024) {
             // Re-encode with lower quality
-            await execAsync(
-                `ffmpeg -i "${inputPath}" -t 4 -vf "fps=8,scale='if(gt(iw,ih),400,-1)':'if(gt(iw,ih),-1,400)',pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000" -c:v libwebp -lossless 0 -quality 40 -loop 0 -preset default -an "${outputPath}" -y`
-            );
+            await execFileAsync('ffmpeg', [
+                '-i', inputPath,
+                '-t', '4',
+                '-vf', "fps=8,scale='if(gt(iw,ih),400,-1)':'if(gt(iw,ih),-1,400)',pad=512:512:(512-iw)/2:(512-ih)/2:color=0x00000000",
+                '-c:v', 'libwebp', '-lossless', '0', '-quality', '40', '-loop', '0',
+                '-preset', 'default', '-an',
+                outputPath, '-y'
+            ]);
         }
         
         // Read output

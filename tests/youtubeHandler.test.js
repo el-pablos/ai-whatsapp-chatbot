@@ -31,11 +31,11 @@ const axios = require('axios');
 
 // Mock child_process
 jest.mock('child_process', () => ({
-    exec: jest.fn(),
+    execFile: jest.fn(),
     spawn: jest.fn()
 }));
 
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
 
 describe('youtubeHandler', () => {
@@ -259,7 +259,7 @@ describe('youtubeHandler', () => {
 
     describe('getVideoInfo', () => {
         beforeEach(() => {
-            exec.mockReset();
+            execFile.mockReset();
         });
 
         it('should parse yt-dlp JSON output', async () => {
@@ -275,15 +275,15 @@ describe('youtubeHandler', () => {
                 description: 'Test description'
             };
 
-            exec.mockImplementation((cmd, opts, callback) => {
+            execFile.mockImplementation((cmd, args, opts, callback) => {
                 if (typeof opts === 'function') {
                     callback = opts;
                 }
                 callback(null, { stdout: JSON.stringify(mockVideoData), stderr: '' });
             });
 
-            // Note: This test may fail because exec is promisified
-            // The actual implementation uses promisify(exec)
+            // Note: This test may fail because execFile is promisified
+            // The actual implementation uses promisify(execFile)
         });
     });
 
@@ -369,11 +369,12 @@ describe('youtubeHandler', () => {
 
     describe('commandExists (cross-platform)', () => {
         beforeEach(() => {
-            exec.mockReset();
+            execFile.mockReset();
         });
 
         it('should return true when command is found', async () => {
-            exec.mockImplementation((cmd, opts, cb) => {
+            execFile.mockImplementation((cmd, args, opts, cb) => {
+                if (typeof args === 'function') { cb = args; args = []; opts = {}; }
                 if (typeof opts === 'function') { cb = opts; opts = {}; }
                 cb(null, { stdout: '/usr/bin/node', stderr: '' });
             });
@@ -382,7 +383,8 @@ describe('youtubeHandler', () => {
         });
 
         it('should return false when command is not found', async () => {
-            exec.mockImplementation((cmd, opts, cb) => {
+            execFile.mockImplementation((cmd, args, opts, cb) => {
+                if (typeof args === 'function') { cb = args; args = []; opts = {}; }
                 if (typeof opts === 'function') { cb = opts; opts = {}; }
                 cb(new Error('not found'), { stdout: '', stderr: '' });
             });
@@ -396,10 +398,11 @@ describe('youtubeHandler', () => {
         });
 
         it('should return a boolean', async () => {
-            exec.mockImplementation((cmd, opts, cb) => {
+            execFile.mockImplementation((cmd, args, opts, cb) => {
+                if (typeof args === 'function') { cb = args; args = []; opts = {}; }
                 if (typeof opts === 'function') { cb = opts; opts = {}; }
                 // Simulate yt-dlp found
-                if (cmd.includes('yt-dlp')) {
+                if (args && args.includes('yt-dlp')) {
                     cb(null, { stdout: '/usr/bin/yt-dlp', stderr: '' });
                 } else {
                     cb(new Error('not found'));
@@ -413,7 +416,7 @@ describe('youtubeHandler', () => {
 
     describe('isFFmpegInstalled', () => {
         beforeEach(() => {
-            exec.mockReset();
+            execFile.mockReset();
         });
 
         it('should be a function', () => {
@@ -421,7 +424,8 @@ describe('youtubeHandler', () => {
         });
 
         it('should return a boolean', async () => {
-            exec.mockImplementation((cmd, opts, cb) => {
+            execFile.mockImplementation((cmd, args, opts, cb) => {
+                if (typeof args === 'function') { cb = args; args = []; opts = {}; }
                 if (typeof opts === 'function') { cb = opts; opts = {}; }
                 cb(null, { stdout: '/usr/bin/ffmpeg', stderr: '' });
             });
@@ -432,7 +436,8 @@ describe('youtubeHandler', () => {
 
     describe('checkDependencies', () => {
         it('should return ytDlp, ffmpeg, and ready fields', async () => {
-            exec.mockImplementation((cmd, opts, cb) => {
+            execFile.mockImplementation((cmd, args, opts, cb) => {
+                if (typeof args === 'function') { cb = args; args = []; opts = {}; }
                 if (typeof opts === 'function') { cb = opts; opts = {}; }
                 cb(null, { stdout: '/usr/bin/ok', stderr: '' });
             });
@@ -448,12 +453,13 @@ describe('youtubeHandler', () => {
 
     describe('processYoutubeUrl preflight guard', () => {
         beforeEach(() => {
-            exec.mockReset();
+            execFile.mockReset();
         });
 
         it('should fail gracefully when yt-dlp is not installed', async () => {
             // Force yt-dlp to be "not found"
-            exec.mockImplementation((cmd, opts, cb) => {
+            execFile.mockImplementation((cmd, args, opts, cb) => {
+                if (typeof args === 'function') { cb = args; args = []; opts = {}; }
                 if (typeof opts === 'function') { cb = opts; opts = {}; }
                 cb(new Error('not found'));
             });

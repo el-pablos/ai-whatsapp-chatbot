@@ -13,9 +13,9 @@
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const { promisify } = require('util');
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Config
 const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141';
@@ -47,8 +47,8 @@ const convertToWav = async (audioBuffer, inputFormat = 'ogg') => {
         // Write buffer to temp file
         fs.writeFileSync(inputPath, audioBuffer);
         
-        // Convert using ffmpeg
-        await execAsync(`ffmpeg -i "${inputPath}" -ar 16000 -ac 1 -c:a pcm_s16le "${outputPath}" -y`);
+        // Convert using ffmpeg (using execFile to prevent command injection)
+        await execFileAsync('ffmpeg', ['-i', inputPath, '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', outputPath, '-y']);
         
         // Cleanup input
         fs.unlinkSync(inputPath);
