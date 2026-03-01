@@ -1,22 +1,27 @@
 /**
  * Auto Setup — runs BEFORE any npm module is loaded
  *
- * Uses ONLY Node.js built-ins (child_process, fs, path) so it works
+ * Uses ONLY Node.js built-ins (child_process, fs, path, crypto) so it works
  * even when node_modules is missing.
  *
  * What it does (synchronously, on every boot):
- *  1. npm install --production   (skips if node_modules is fresh)
+ *  0. git pull origin master (fast-forward only, if enabled)
+ *  1. npm install --production   (skips if deps hash unchanged)
  *  2. Install yt-dlp             (skips if already installed)
  *  3. Install ffmpeg             (skips if already installed)
- *  4. Create required dirs       (logs, downloads, auth_info_baileys)
+ *  4. Install pdftotext          (skips if already installed)
+ *  5. Install LibreOffice        (gated behind env var)
+ *  6. Create required dirs       (logs, downloads, auth_info_baileys)
+ *  7. pm2 save                   (if running under PM2)
  *
  * Safe to run repeatedly — fast no-op when everything is installed.
  *
  * @author Tama El Pablo
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 const { execSync } = require('child_process');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -77,20 +82,84 @@ const getVersion = (cmd) => {
 };
 
 // ═══════════════════════════════════════════════════════════
-// 1. NPM INSTALL
+// 0. GIT PULL (fast-forward only)
 // ═══════════════════════════════════════════════════════════
+
+const ensureGitPull = () => {
+    // Gating: AUTO_GIT_PULL defaults to '1' (ON)
+    if (process.env.AUTO_GIT_PULL === '0') {
+        log('git pull disabled (AUTO_GIT_PULL=0)');
+        return;
+    }
+
+    // Must have .git folder
+    if (!fs.existsSync(path.join(PROJECT_DIR, '.git'))) {
+        log('Not a git repo — skip git pull');
+        return;
+    }
+
+    if (!commandExists('git')) {
+        warn('git not found — skip git pull');
+        return;
+    }
+
+    const branch = process.env.AUTO_GIT_BRANCH || 'master';
+
+    try {
+        log(`git pull origin ${branch} (fast-forward only)...`);
+        execSync(`git fetch origin ${branch} --quiet`, {
+            cwd: PROJECT_DIR,
+            stdio: 'pipe',
+            timeout: 30000,
+        });
+        execSync(`git merge --ff-only origin/${branch}`, {
+            cwd: PROJECT_DIR,
+            stdio: 'pipe',
+            timeout: 15000,
+        });
+        log(`git pull origin ${branch} ✅`);
+    } catch (e) {
+        const msg = (e.stdout || e.stderr || e.message || '').toString().trim();
+        if (msg.includes('Already up to date')) {
+            log(`Already up to date ✅`);
+        } else {
+            warn(`git pull failed (safe — continuing with current version): ${msg.substring(0, 200)}`);
+        }
+    }
+};
+
+// ═══════════════════════════════════════════════════════════
+// 1. NPM INSTALL (hash-based freshness check)
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Compute MD5 hash of a file (fast, no security concern)
+ */
+const fileHash = (filePath) => {
+    try {
+        const content = fs.readFileSync(filePath);
+        return crypto.createHash('md5').update(content).digest('hex');
+    } catch {
+        return null;
+    }
+};
 
 const ensureNpmDeps = () => {
     const nodeModules = path.join(PROJECT_DIR, 'node_modules');
     const packageJson = path.join(PROJECT_DIR, 'package.json');
-    const lockMarker = path.join(nodeModules, '.package-lock.json');
+    const packageLock = path.join(PROJECT_DIR, 'package-lock.json');
+    const hashMarker = path.join(nodeModules, '.deps-hash');
 
-    // Skip if node_modules exists and is newer than package.json
-    if (fs.existsSync(lockMarker)) {
+    // Compute current hash from package.json + package-lock.json
+    const pkgHash = fileHash(packageJson) || '';
+    const lockHash = fileHash(packageLock) || '';
+    const currentHash = `${pkgHash}:${lockHash}`;
+
+    // Skip if hash matches
+    if (fs.existsSync(hashMarker)) {
         try {
-            const pkgMtime = fs.statSync(packageJson).mtimeMs;
-            const lockMtime = fs.statSync(lockMarker).mtimeMs;
-            if (lockMtime >= pkgMtime) {
+            const storedHash = fs.readFileSync(hashMarker, 'utf-8').trim();
+            if (storedHash === currentHash && fs.existsSync(nodeModules)) {
                 log('npm dependencies up to date ✅');
                 return;
             }
@@ -99,12 +168,22 @@ const ensureNpmDeps = () => {
         }
     }
 
-    log('Running npm install --production ...');
-    const ok = run('npm install --production --no-audit --no-fund', { 
+    // node_modules missing entirely
+    if (!fs.existsSync(nodeModules)) {
+        log('node_modules missing — running npm install...');
+    } else {
+        log('package.json or package-lock.json changed — running npm install...');
+    }
+
+    const ok = run('npm install --omit=dev --no-audit --no-fund', {
         timeout: 180000,  // 3 min for npm install
         stdio: 'inherit', // Show npm output in PM2 logs
     });
     if (ok) {
+        // Write hash marker after successful install
+        try {
+            fs.writeFileSync(hashMarker, currentHash, 'utf-8');
+        } catch { /* non-critical */ }
         log('npm install complete ✅');
     } else {
         warn('npm install failed — some modules may be missing');
@@ -310,6 +389,34 @@ const ensureDirectories = () => {
 };
 
 // ═══════════════════════════════════════════════════════════
+// 5. PM2 SAVE
+// ═══════════════════════════════════════════════════════════
+
+const ensurePm2Save = () => {
+    // Disable via env var
+    if (process.env.AUTO_PM2_SAVE === '0') {
+        log('pm2 save disabled (AUTO_PM2_SAVE=0)');
+        return;
+    }
+
+    // Only run if we are inside a PM2 process
+    if (!process.env.pm_id) {
+        return; // Not running under PM2
+    }
+
+    if (!commandExists('pm2')) {
+        return; // pm2 binary not found
+    }
+
+    const ok = run('pm2 save', { timeout: 15000 });
+    if (ok) {
+        log('pm2 save ✅');
+    } else {
+        warn('pm2 save failed (non-critical)');
+    }
+};
+
+// ═══════════════════════════════════════════════════════════
 // RUN EVERYTHING
 // ═══════════════════════════════════════════════════════════
 
@@ -326,12 +433,14 @@ const runAutoSetup = () => {
     const start = Date.now();
 
     try {
+        ensureGitPull();
         ensureDirectories();
         ensureNpmDeps();
         ensureYtDlp();
         ensureFfmpeg();
         ensurePdftotext();
         ensureLibreOffice();
+        ensurePm2Save();
     } catch (e) {
         warn(`Unexpected error: ${e.message}`);
     }
@@ -342,10 +451,12 @@ const runAutoSetup = () => {
     console.log('╔═══════════════════════════════════════════════════════════╗');
     console.log('║          📋 AUTO-SETUP COMPLETE                          ║');
     console.log('╠═══════════════════════════════════════════════════════════╣');
+    console.log(`║  git pull    : ${commandExists('git') ? '✅' : '—'}                                              ║`);
     console.log(`║  yt-dlp      : ${commandExists('yt-dlp') ? '✅ ready' : '❌ missing'}                                    ║`);
     console.log(`║  ffmpeg      : ${commandExists('ffmpeg') ? '✅ ready' : '❌ missing'}                                    ║`);
     console.log(`║  pdftotext   : ${commandExists('pdftotext') ? '✅ ready' : '❌ missing'}                                    ║`);
     console.log(`║  libreoffice : ${(commandExists('libreoffice') || commandExists('soffice')) ? '✅ ready' : '⚠️ missing (fallback)'}                             ║`);
+    console.log(`║  pm2 save    : ${process.env.pm_id ? '✅' : '— (not PM2)'}                                       ║`);
     console.log(`║  elapsed     : ${elapsed}s                                          ║`);
     console.log('╚═══════════════════════════════════════════════════════════╝');
 };
@@ -353,4 +464,14 @@ const runAutoSetup = () => {
 // Execute immediately when required
 runAutoSetup();
 
-module.exports = { runAutoSetup, commandExists, getVersion, ensurePdftotext, ensureLibreOffice };
+module.exports = {
+    runAutoSetup,
+    commandExists,
+    getVersion,
+    ensureGitPull,
+    ensureNpmDeps,
+    ensurePdftotext,
+    ensureLibreOffice,
+    ensurePm2Save,
+    fileHash,
+};
