@@ -243,6 +243,58 @@ const ensurePdftotext = () => {
 };
 
 // ═══════════════════════════════════════════════════════════
+// 3c. LIBREOFFICE (optional, gated behind env var)
+// ═══════════════════════════════════════════════════════════
+
+const ensureLibreOffice = () => {
+    // Check if already available (libreoffice or soffice)
+    if (commandExists('libreoffice') || commandExists('soffice')) {
+        const which = commandExists('libreoffice') ? 'libreoffice' : 'soffice';
+        log(`LibreOffice: ${which} installed ✅`);
+        return;
+    }
+
+    // Gated behind env var — LibreOffice is heavy (~200MB+)
+    if (process.env.AUTOSETUP_INSTALL_LIBREOFFICE !== '1') {
+        warn('LibreOffice missing — PPT/PPTX will use fallback XML parser (teks only). ' +
+             'Install manual: apt install libreoffice-core libreoffice-impress, ' +
+             'atau set AUTOSETUP_INSTALL_LIBREOFFICE=1 untuk auto-install.');
+        return;
+    }
+
+    log('Installing LibreOffice (env AUTOSETUP_INSTALL_LIBREOFFICE=1)...');
+
+    if (commandExists('apt-get')) {
+        const ok = run('apt-get update -qq 2>/dev/null && apt-get install -y -qq libreoffice-core libreoffice-impress 2>/dev/null', {
+            timeout: 600000, // 10 min — LO is big
+        });
+        if (ok && (commandExists('libreoffice') || commandExists('soffice'))) {
+            log('LibreOffice installed via apt ✅');
+            return;
+        }
+    }
+
+    if (commandExists('yum') || commandExists('dnf')) {
+        const pm = commandExists('dnf') ? 'dnf' : 'yum';
+        run(`${pm} install -y -q libreoffice-core libreoffice-impress 2>/dev/null`, { timeout: 600000 });
+        if (commandExists('libreoffice') || commandExists('soffice')) {
+            log(`LibreOffice installed via ${pm} ✅`);
+            return;
+        }
+    }
+
+    if (commandExists('apk')) {
+        run('apk add --quiet libreoffice 2>/dev/null', { timeout: 600000 });
+        if (commandExists('libreoffice') || commandExists('soffice')) {
+            log('LibreOffice installed via apk ✅');
+            return;
+        }
+    }
+
+    warn('LibreOffice could not be installed — PPT/PPTX will use fallback XML parser');
+};
+
+// ═══════════════════════════════════════════════════════════
 // 4. REQUIRED DIRECTORIES
 // ═══════════════════════════════════════════════════════════
 
@@ -279,6 +331,7 @@ const runAutoSetup = () => {
         ensureYtDlp();
         ensureFfmpeg();
         ensurePdftotext();
+        ensureLibreOffice();
     } catch (e) {
         warn(`Unexpected error: ${e.message}`);
     }
@@ -289,14 +342,15 @@ const runAutoSetup = () => {
     console.log('╔═══════════════════════════════════════════════════════════╗');
     console.log('║          📋 AUTO-SETUP COMPLETE                          ║');
     console.log('╠═══════════════════════════════════════════════════════════╣');
-    console.log(`║  yt-dlp    : ${commandExists('yt-dlp') ? '✅ ready' : '❌ missing'}                                    ║`);
-    console.log(`║  ffmpeg    : ${commandExists('ffmpeg') ? '✅ ready' : '❌ missing'}                                    ║`);
-    console.log(`║  pdftotext : ${commandExists('pdftotext') ? '✅ ready' : '❌ missing'}                                    ║`);
-    console.log(`║  elapsed   : ${elapsed}s                                          ║`);
+    console.log(`║  yt-dlp      : ${commandExists('yt-dlp') ? '✅ ready' : '❌ missing'}                                    ║`);
+    console.log(`║  ffmpeg      : ${commandExists('ffmpeg') ? '✅ ready' : '❌ missing'}                                    ║`);
+    console.log(`║  pdftotext   : ${commandExists('pdftotext') ? '✅ ready' : '❌ missing'}                                    ║`);
+    console.log(`║  libreoffice : ${(commandExists('libreoffice') || commandExists('soffice')) ? '✅ ready' : '⚠️ missing (fallback)'}                             ║`);
+    console.log(`║  elapsed     : ${elapsed}s                                          ║`);
     console.log('╚═══════════════════════════════════════════════════════════╝');
 };
 
 // Execute immediately when required
 runAutoSetup();
 
-module.exports = { runAutoSetup, commandExists, getVersion, ensurePdftotext };
+module.exports = { runAutoSetup, commandExists, getVersion, ensurePdftotext, ensureLibreOffice };
