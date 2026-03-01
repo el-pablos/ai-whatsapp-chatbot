@@ -47,12 +47,103 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const AdmZip = require('adm-zip');
 
+const { execSync } = require('child_process');
 const execAsync = promisify(exec);
 
 // Constants
 const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141';
 const COPILOT_API_MODEL = process.env.COPILOT_API_MODEL || 'claude-sonnet-4.5';
 const TEMP_DIR = path.join(process.cwd(), 'temp_docs');
+
+/**
+ * Resolve the LibreOffice binary name available on this system.
+ * Tries 'libreoffice' first, then 'soffice' (some distros use that).
+ * Returns the command string or null if neither is found.
+ */
+let _officeBinaryCache = undefined;
+const resolveOfficeBinary = () => {
+    if (_officeBinaryCache !== undefined) return _officeBinaryCache;
+    for (const cmd of ['libreoffice', 'soffice']) {
+        try {
+            execSync(
+                process.platform === 'win32'
+                    ? `where ${cmd} 2>nul`
+                    : `which ${cmd} 2>/dev/null || command -v ${cmd} 2>/dev/null`,
+                { stdio: 'pipe', timeout: 5000 }
+            );
+            _officeBinaryCache = cmd;
+            return cmd;
+        } catch {
+            // not found, try next
+        }
+    }
+    _officeBinaryCache = null;
+    return null;
+};
+
+/**
+ * Reset the cached office binary (used in tests)
+ */
+const _resetOfficeBinaryCache = () => { _officeBinaryCache = undefined; };
+
+/**
+ * Extract text from PPTX files by parsing the XML slides inside the ZIP.
+ * PPTX is a ZIP containing ppt/slides/slide*.xml with <a:t> text nodes.
+ * This is a fallback when LibreOffice is not available.
+ */
+const extractPptxTextFromXml = (buffer) => {
+    try {
+        const zip = new AdmZip(buffer);
+        const entries = zip.getEntries();
+
+        // Find slide XML files and sort numerically
+        const slideEntries = entries
+            .filter(e => /^ppt\/slides\/slide\d+\.xml$/i.test(e.entryName))
+            .sort((a, b) => {
+                const numA = parseInt(a.entryName.match(/slide(\d+)/i)[1], 10);
+                const numB = parseInt(b.entryName.match(/slide(\d+)/i)[1], 10);
+                return numA - numB;
+            });
+
+        if (slideEntries.length === 0) {
+            return { success: false, error: 'No slide XML files found in PPTX archive', text: '', metadata: {} };
+        }
+
+        const slideTexts = [];
+        for (let i = 0; i < slideEntries.length; i++) {
+            const xml = slideEntries[i].getData().toString('utf-8');
+            // Extract all <a:t>...</a:t> text nodes
+            const texts = [];
+            const regex = /<a:t[^>]*>(.*?)<\/a:t>/gs;
+            let match;
+            while ((match = regex.exec(xml)) !== null) {
+                const text = match[1]
+                    .replace(/&amp;/g, '&')
+                    .replace(/&lt;/g, '<')
+                    .replace(/&gt;/g, '>')
+                    .replace(/&quot;/g, '"')
+                    .replace(/&apos;/g, "'");
+                if (text.trim()) texts.push(text);
+            }
+            if (texts.length > 0) {
+                slideTexts.push(`\n--- SLIDE ${i + 1} ---\n${texts.join(' ')}`);
+            }
+        }
+
+        const fullText = slideTexts.join('\n');
+        if (!fullText.trim()) {
+            return { success: false, error: 'PPTX slides found but no text content extracted', text: '', metadata: {} };
+        }
+
+        return {
+            success: true,
+            text: fullText,
+            metadata: { method: 'pptx-xml-fallback', slides: slideEntries.length }
+        };
+    } catch (err) {
+        return { success: false, error: `PPTX XML fallback failed: ${err.message}`, text: '', metadata: {} };
+    }
+};
 
 // ============================================
 // SUPPORTED DOCUMENT FORMATS - 70+ FORMATS!
@@ -378,6 +469,16 @@ const extractDocText = async (buffer) => {
  * Extract text from ODT, RTF, and other office formats using LibreOffice
  */
 const extractOfficeText = async (buffer, ext) => {
+    const officeBin = resolveOfficeBinary();
+    if (!officeBin) {
+        return {
+            success: false,
+            error: `Format .${ext} butuh LibreOffice untuk konversi teks, tapi LibreOffice/soffice tidak ditemukan di server. Install: apt install libreoffice-core`,
+            text: '',
+            metadata: {}
+        };
+    }
+
     await ensureTempDir();
     const tempPath = path.join(TEMP_DIR, `temp_${Date.now()}.${ext}`);
     const baseName = path.basename(tempPath, `.${ext}`);
@@ -386,8 +487,8 @@ const extractOfficeText = async (buffer, ext) => {
     try {
         await fs.writeFile(tempPath, buffer);
         
-        // Convert to text using LibreOffice
-        await execAsync(`libreoffice --headless --convert-to txt:Text --outdir "${TEMP_DIR}" "${tempPath}"`, 
+        // Convert to text using resolved LibreOffice binary
+        await execAsync(`${officeBin} --headless --convert-to txt:Text --outdir "${TEMP_DIR}" "${tempPath}"`, 
             { timeout: 120000, maxBuffer: 500 * 1024 * 1024 });
         
         const text = await fs.readFile(txtPath, 'utf-8');
@@ -403,33 +504,58 @@ const extractOfficeText = async (buffer, ext) => {
 };
 
 /**
- * Extract text from presentations
+ * Extract text from presentations.
+ * Strategy:
+ *   1) If LibreOffice available → convert to PDF → extractPdfText (best quality)
+ *   2) If PPTX and no LibreOffice → XML fallback (text only, no layout)
+ *   3) If PPT (binary) and no LibreOffice → actionable error
  */
 const extractPresentationText = async (buffer, ext) => {
-    await ensureTempDir();
-    const tempPath = path.join(TEMP_DIR, `temp_${Date.now()}.${ext}`);
-    const baseName = path.basename(tempPath, `.${ext}`);
-    const pdfPath = path.join(TEMP_DIR, `${baseName}.pdf`);
-    
-    try {
-        await fs.writeFile(tempPath, buffer);
-        
-        // Use LibreOffice to convert to PDF first, then extract text
-        await execAsync(`libreoffice --headless --convert-to pdf --outdir "${TEMP_DIR}" "${tempPath}"`,
-            { timeout: 180000, maxBuffer: 500 * 1024 * 1024 });
-        
-        const pdfBuffer = await fs.readFile(pdfPath);
-        const result = await extractPdfText(pdfBuffer);
-        
-        await cleanupTemp(tempPath);
-        await cleanupTemp(pdfPath);
-        
-        return result;
-    } catch (error) {
-        await cleanupTemp(tempPath);
-        await cleanupTemp(pdfPath);
-        return { success: false, error: error.message, text: '', metadata: {} };
+    const officeBin = resolveOfficeBinary();
+
+    // ── Path A: LibreOffice available ──
+    if (officeBin) {
+        await ensureTempDir();
+        const tempPath = path.join(TEMP_DIR, `temp_${Date.now()}.${ext}`);
+        const baseName = path.basename(tempPath, `.${ext}`);
+        const pdfPath = path.join(TEMP_DIR, `${baseName}.pdf`);
+
+        try {
+            await fs.writeFile(tempPath, buffer);
+
+            await execAsync(`${officeBin} --headless --convert-to pdf --outdir "${TEMP_DIR}" "${tempPath}"`,
+                { timeout: 180000, maxBuffer: 500 * 1024 * 1024 });
+
+            const pdfBuffer = await fs.readFile(pdfPath);
+            const result = await extractPdfText(pdfBuffer);
+
+            await cleanupTemp(tempPath);
+            await cleanupTemp(pdfPath);
+
+            return result;
+        } catch (error) {
+            await cleanupTemp(tempPath);
+            await cleanupTemp(pdfPath);
+            return { success: false, error: error.message, text: '', metadata: {} };
+        }
     }
+
+    // ── Path B: No LibreOffice — try PPTX XML fallback ──
+    const pptxExts = ['pptx', 'pptm', 'ppsx', 'potx'];
+    if (pptxExts.includes(ext)) {
+        console.log(`[Document] LibreOffice not found — using PPTX XML fallback for .${ext}`);
+        return extractPptxTextFromXml(buffer);
+    }
+
+    // ── Path C: Binary PPT / ODP / KEY etc without LibreOffice ──
+    return {
+        success: false,
+        error: `Format .${ext} butuh LibreOffice untuk konversi, tapi LibreOffice/soffice tidak ditemukan di server. ` +
+               `Untuk PPTX, gunakan format .pptx agar bisa pakai fallback tanpa LibreOffice. ` +
+               `Install LibreOffice: apt install libreoffice-core libreoffice-impress`,
+        text: '',
+        metadata: {}
+    };
 };
 
 /**
@@ -1052,6 +1178,7 @@ module.exports = {
     extractDocText,
     extractOfficeText,
     extractPresentationText,
+    extractPptxTextFromXml,
     extractEbookText,
     extractHtmlText,
     extractPlainText,
@@ -1074,6 +1201,8 @@ module.exports = {
     formatSize,
     generateProgressBar,
     getProgressMessage,
+    resolveOfficeBinary,
+    _resetOfficeBinaryCache,
     
     // Constants
     DOCUMENT_FORMATS,

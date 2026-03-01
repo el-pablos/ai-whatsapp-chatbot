@@ -14,6 +14,10 @@ const {
     getSupportedFormats,
     extractPlainText,
     extractHtmlText,
+    extractPresentationText,
+    extractPptxTextFromXml,
+    resolveOfficeBinary,
+    _resetOfficeBinaryCache,
     generateProgressBar,
     getProgressMessage,
     DOCUMENT_FORMATS,
@@ -643,6 +647,223 @@ describe('documentHandler - Universal Document Reader', () => {
 
             // Should not be called for single chunk
             expect(onProgress).not.toHaveBeenCalled();
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // PPTX XML Fallback Tests
+    // ═══════════════════════════════════════════════════════════
+    describe('extractPptxTextFromXml - PPTX XML fallback', () => {
+        /**
+         * Build a minimal valid PPTX (ZIP with ppt/slides/slide1.xml)
+         */
+        const buildMinimalPptx = (slideXmls) => {
+            const AdmZip = require('adm-zip');
+            const zip = new AdmZip();
+            slideXmls.forEach((xml, i) => {
+                zip.addFile(`ppt/slides/slide${i + 1}.xml`, Buffer.from(xml, 'utf-8'));
+            });
+            return zip.toBuffer();
+        };
+
+        it('should extract text from a minimal PPTX with one slide', () => {
+            const slideXml = `<?xml version="1.0" encoding="UTF-8"?>
+<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+       xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:cSld><p:spTree>
+    <p:sp><p:txBody>
+      <a:p><a:r><a:t>Hello World</a:t></a:r></a:p>
+      <a:p><a:r><a:t>Slide One Text</a:t></a:r></a:p>
+    </p:txBody></p:sp>
+  </p:spTree></p:cSld>
+</p:sld>`;
+            const buf = buildMinimalPptx([slideXml]);
+            const result = extractPptxTextFromXml(buf);
+
+            expect(result.success).toBe(true);
+            expect(result.metadata.method).toBe('pptx-xml-fallback');
+            expect(result.metadata.slides).toBe(1);
+            expect(result.text).toContain('Hello World');
+            expect(result.text).toContain('Slide One Text');
+            expect(result.text).toContain('SLIDE 1');
+        });
+
+        it('should extract text from multiple slides in correct order', () => {
+            const slide1 = `<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                                   xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+              <p:cSld><p:spTree><p:sp><p:txBody>
+                <a:p><a:r><a:t>First Slide</a:t></a:r></a:p>
+              </p:txBody></p:sp></p:spTree></p:cSld></p:sld>`;
+            const slide2 = `<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                                   xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+              <p:cSld><p:spTree><p:sp><p:txBody>
+                <a:p><a:r><a:t>Second Slide</a:t></a:r></a:p>
+              </p:txBody></p:sp></p:spTree></p:cSld></p:sld>`;
+            const buf = buildMinimalPptx([slide1, slide2]);
+            const result = extractPptxTextFromXml(buf);
+
+            expect(result.success).toBe(true);
+            expect(result.metadata.slides).toBe(2);
+            expect(result.text).toContain('SLIDE 1');
+            expect(result.text).toContain('First Slide');
+            expect(result.text).toContain('SLIDE 2');
+            expect(result.text).toContain('Second Slide');
+            // First slide should appear before second
+            expect(result.text.indexOf('First Slide')).toBeLessThan(result.text.indexOf('Second Slide'));
+        });
+
+        it('should decode XML entities', () => {
+            const slideXml = `<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                                     xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+              <p:cSld><p:spTree><p:sp><p:txBody>
+                <a:p><a:r><a:t>A &amp; B &lt; C &gt; D</a:t></a:r></a:p>
+              </p:txBody></p:sp></p:spTree></p:cSld></p:sld>`;
+            const buf = buildMinimalPptx([slideXml]);
+            const result = extractPptxTextFromXml(buf);
+
+            expect(result.success).toBe(true);
+            expect(result.text).toContain('A & B < C > D');
+        });
+
+        it('should return error for non-ZIP buffer', () => {
+            const result = extractPptxTextFromXml(Buffer.from('not a zip file'));
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('PPTX XML fallback failed');
+        });
+
+        it('should return error for ZIP without slide XMLs', () => {
+            const AdmZip = require('adm-zip');
+            const zip = new AdmZip();
+            zip.addFile('dummy.txt', Buffer.from('hello'));
+            const result = extractPptxTextFromXml(zip.toBuffer());
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('No slide XML files found');
+        });
+    });
+
+    describe('extractPresentationText - LibreOffice integration', () => {
+        const child_process = require('child_process');
+
+        beforeEach(() => {
+            _resetOfficeBinaryCache();
+        });
+
+        it('should use PPTX XML fallback when LibreOffice is missing (pptx)', async () => {
+            // Mock execSync so resolveOfficeBinary returns null (no LO)
+            const originalExecSync = child_process.execSync;
+            child_process.execSync = jest.fn((cmd) => {
+                if (/where|which|command/.test(cmd) && /libreoffice|soffice/.test(cmd)) {
+                    throw new Error('not found');
+                }
+                return originalExecSync(cmd);
+            });
+
+            // Build a minimal PPTX
+            const AdmZip = require('adm-zip');
+            const zip = new AdmZip();
+            zip.addFile('ppt/slides/slide1.xml', Buffer.from(
+                `<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                        xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+                  <p:cSld><p:spTree><p:sp><p:txBody>
+                    <a:p><a:r><a:t>Fallback Test Slide</a:t></a:r></a:p>
+                  </p:txBody></p:sp></p:spTree></p:cSld></p:sld>`
+            ));
+            const buf = zip.toBuffer();
+
+            const result = await extractPresentationText(buf, 'pptx');
+
+            expect(result.success).toBe(true);
+            expect(result.metadata.method).toBe('pptx-xml-fallback');
+            expect(result.text).toContain('Fallback Test Slide');
+
+            // Restore
+            child_process.execSync = originalExecSync;
+            _resetOfficeBinaryCache();
+        });
+
+        it('should return actionable error for PPT (binary) when LibreOffice missing', async () => {
+            const originalExecSync = child_process.execSync;
+            child_process.execSync = jest.fn((cmd) => {
+                if (/where|which|command/.test(cmd) && /libreoffice|soffice/.test(cmd)) {
+                    throw new Error('not found');
+                }
+                return originalExecSync(cmd);
+            });
+
+            const result = await extractPresentationText(Buffer.from('dummy ppt'), 'ppt');
+
+            expect(result.success).toBe(false);
+            expect(result.error).toContain('LibreOffice');
+            expect(result.error).toContain('apt install');
+
+            child_process.execSync = originalExecSync;
+            _resetOfficeBinaryCache();
+        });
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // bugReporter dependency classification
+    // ═══════════════════════════════════════════════════════════
+    describe('bugReporter - dependency classification', () => {
+        const { isDependencyMissing, reportBugToOwner, clearBugCooldowns } = require('../src/bugReporter');
+
+        beforeEach(() => {
+            clearBugCooldowns();
+        });
+
+        it('should detect "libreoffice: not found" as dependency missing', () => {
+            expect(isDependencyMissing('libreoffice: not found')).toBe(true);
+            expect(isDependencyMissing('soffice: not found')).toBe(true);
+            expect(isDependencyMissing('ffmpeg: not found')).toBe(true);
+            expect(isDependencyMissing('command not found')).toBe(true);
+        });
+
+        it('should NOT classify regular errors as dependency missing', () => {
+            expect(isDependencyMissing('Cannot read property x of undefined')).toBe(false);
+            expect(isDependencyMissing('ECONNREFUSED')).toBe(false);
+            expect(isDependencyMissing('token expired')).toBe(false);
+        });
+
+        it('should send different message for dependency errors (no "bug" wording)', async () => {
+            const sock = {
+                sendMessage: jest.fn().mockResolvedValue({}),
+            };
+
+            await reportBugToOwner(
+                sock,
+                '628xxx@s.whatsapp.net',
+                'TestUser',
+                'libreoffice: not found',
+                'Document Analysis'
+            );
+
+            expect(sock.sendMessage).toHaveBeenCalledTimes(2);
+            // Owner message should say MISSING DEPENDENCY, not "BUG REPORTED"
+            const ownerMsg = sock.sendMessage.mock.calls[0][1].text;
+            expect(ownerMsg).toContain('MISSING DEPENDENCY');
+            expect(ownerMsg).not.toContain('BUG REPORTED');
+            // User message should NOT say "bug"
+            const userMsg = sock.sendMessage.mock.calls[1][1].text;
+            expect(userMsg).not.toContain('Bug');
+            expect(userMsg).toContain('dependency');
+        });
+
+        it('should send standard bug message for real bugs', async () => {
+            const sock = {
+                sendMessage: jest.fn().mockResolvedValue({}),
+            };
+
+            await reportBugToOwner(
+                sock,
+                '628xxx@s.whatsapp.net',
+                'TestUser',
+                'TypeError: Cannot read property x of undefined',
+                'AI Response'
+            );
+
+            expect(sock.sendMessage).toHaveBeenCalledTimes(2);
+            const ownerMsg = sock.sendMessage.mock.calls[0][1].text;
+            expect(ownerMsg).toContain('BUG REPORTED');
         });
     });
 });
