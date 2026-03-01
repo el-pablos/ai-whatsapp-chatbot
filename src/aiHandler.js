@@ -396,6 +396,15 @@ const fetchCopilotResponse = async (userMessage, conversationHistory = [], optio
             console.error('[AI Handler] Response data:', error.response.data);
         }
 
+        // Actionable messages for auth/quota errors
+        const status = error.response?.status;
+        if (status === 401) {
+            return 'duh AI nya lagi error bro — token expired, owner harus refresh token Copilot API dulu 🔑';
+        }
+        if (status === 402) {
+            return 'wah quota AI nya abis bro 😓 owner harus top-up atau tunggu reset quota';
+        }
+
         return getRandomErrorResponse();
     }
 };
@@ -495,12 +504,14 @@ const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conv
     } catch (error) {
         console.error('[AI Handler] Vision error:', error.message);
         
-        // Retry logic for transient errors
+        // Retry logic for transient errors (NOT auth/quota errors)
         if (retryCount < MAX_RETRIES) {
-            const isRetryable = error.code === 'ECONNRESET' || 
+            const isRetryable = (error.code === 'ECONNRESET' || 
                                error.code === 'ETIMEDOUT' || 
                                error.response?.status === 429 ||
-                               error.response?.status >= 500;
+                               error.response?.status >= 500) &&
+                               error.response?.status !== 401 &&
+                               error.response?.status !== 402;
             
             if (isRetryable) {
                 console.log(`[AI Handler] Retrying vision request (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
@@ -510,6 +521,12 @@ const fetchVisionResponse = async (base64Image, mimetype, userCaption = '', conv
         }
         
         // Different error messages based on error type
+        if (error.response?.status === 401) {
+            return 'duh AI nya lagi error bro — token expired, owner harus refresh token Copilot API dulu 🔑';
+        }
+        if (error.response?.status === 402) {
+            return 'wah quota AI nya abis bro 😓 owner harus top-up atau tunggu reset quota';
+        }
         if (error.response?.status === 413) {
             return 'duh gambar nya kegedean bro 😓 coba kirim yang lebih kecil';
         }

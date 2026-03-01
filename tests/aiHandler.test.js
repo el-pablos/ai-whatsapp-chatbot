@@ -95,6 +95,37 @@ describe('AI Handler Module', () => {
             expect(ERROR_RESPONSES).toContain(result);
         });
 
+        it('should return actionable message when API returns 401 (token expired)', async () => {
+            axios.post.mockRejectedValue({
+                response: {
+                    status: 401,
+                    data: { error: { message: 'unauthorized: token expired\n', type: 'error' } }
+                },
+                message: 'Request failed with status code 401'
+            });
+
+            const result = await fetchCopilotResponse('test message');
+
+            expect(result).toContain('token expired');
+            expect(result).not.toBe(''); // not a generic error
+            expect(ERROR_RESPONSES).not.toContain(result); // not a random error response
+        });
+
+        it('should return actionable message when API returns 402 (quota exceeded)', async () => {
+            axios.post.mockRejectedValue({
+                response: {
+                    status: 402,
+                    data: { error: { message: 'You have no quota', type: 'error', code: 'quota_exceeded' } }
+                },
+                message: 'Request failed with status code 402'
+            });
+
+            const result = await fetchCopilotResponse('test message');
+
+            expect(result).toContain('quota');
+            expect(ERROR_RESPONSES).not.toContain(result);
+        });
+
         it('should return error response when network timeout', async () => {
             axios.post.mockRejectedValue({
                 code: 'ECONNABORTED',
