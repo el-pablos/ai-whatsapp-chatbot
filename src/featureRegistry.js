@@ -309,6 +309,20 @@ const FEATURES = [
     },
 
     // ═══════════════════════════════════════════════════
+    //  PRESENTATION (PPTX)
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'presentation.create',
+        name: 'PPTX Generator',
+        module: 'pptxHandler',
+        description: 'Generate and send PowerPoint (.pptx) presentations via Python backend (python-pptx). Supports title/bullets/summary slides with speaker notes.',
+        trigger: 'user asks for pptx/ppt/powerpoint/presentasi/slide file, or AI tool_call presentation.create',
+        input: { title: 'string', subtitle: 'string?', slides: 'SlideSpec[]', notes: 'NotesConfig?' },
+        output: { filePath: 'string', fileName: 'string', type: 'pptx' },
+        examples: ['bikinin pptx 5 slide soal machine learning', 'bikin presentasi perbandingan SVM vs Naive Bayes', 'kirimin ke aku dalam bentuk file .pptx aja'],
+    },
+
+    // ═══════════════════════════════════════════════════
     //  ADMIN / SYSTEM
     // ═══════════════════════════════════════════════════
     {

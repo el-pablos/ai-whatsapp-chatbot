@@ -48,6 +48,9 @@ const {
     parseFileMarker, createAndSendFile, getMimeType,
 } = require('./fileCreator');
 const {
+    createPptxFromSpec, validateSlideSpec, detectPptxRequest,
+} = require('./pptxHandler');
+const {
     detectCalendarIntent, formatCalendarResponse,
     parseDateFromString, getTodayInfo,
 } = require('./calendarHandler');
@@ -429,6 +432,51 @@ const TOOLS = [
                 mimetype: getMimeType(params.fileName),
                 type: 'file',
             };
+        },
+    },
+
+    // ── Presentation (PPTX) ───────────────────────────────
+    {
+        name: 'presentation.create',
+        description: 'Generate a PowerPoint (.pptx) presentation file with slides. Use when user asks for pptx, ppt, powerpoint, presentasi, or slides. Provide a valid slide spec JSON with title, subtitle, and slides array.',
+        parameters: {
+            type: 'object',
+            properties: {
+                title: { type: 'string', description: 'Presentation title' },
+                subtitle: { type: 'string', description: 'Optional subtitle' },
+                slides: {
+                    type: 'array',
+                    description: 'Array of slide objects. Each has type (title|bullets|summary), heading, bullets[], and optional next_steps[].',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            type: { type: 'string', enum: ['title', 'bullets', 'summary'], description: 'Slide type' },
+                            heading: { type: 'string', description: 'Slide heading text' },
+                            bullets: { type: 'array', items: { type: 'string' }, description: 'Bullet point texts' },
+                            next_steps: { type: 'array', items: { type: 'string' }, description: 'Next steps (summary slide only)' },
+                        },
+                    },
+                },
+                outputFilename: { type: 'string', description: 'Output filename (optional, auto-generated if omitted)' },
+                notes: {
+                    type: 'object',
+                    description: 'Speaker notes config',
+                    properties: {
+                        enabled: { type: 'boolean' },
+                        per_slide: { type: 'array', items: { type: 'string' } },
+                    },
+                },
+            },
+            required: ['title', 'slides'],
+        },
+        execute: async (params) => {
+            const spec = {
+                title: params.title,
+                subtitle: params.subtitle || '',
+                slides: params.slides || [],
+                notes: params.notes || { enabled: false, per_slide: [] },
+            };
+            return await createPptxFromSpec(spec, params.outputFilename);
         },
     },
 
