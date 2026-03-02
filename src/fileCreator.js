@@ -38,7 +38,11 @@ const MIME_TYPES = {
     'log': 'text/plain',
     'rst': 'text/x-rst',
     'tex': 'application/x-tex',
-    'tsv': 'text/tab-separated-values'
+    'tsv': 'text/tab-separated-values',
+    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'ppt': 'application/vnd.ms-powerpoint',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 };
 
 /**
@@ -183,6 +187,19 @@ const detectFileRequest = (text) => {
     if (!text) return { isFileRequest: false, format: null };
 
     const lowerText = text.toLowerCase();
+
+    // PPTX detection — delegate to pptxHandler via AI tool-calling
+    const pptxPatterns = [
+        /\b(pptx|ppt|powerpoint)\b/i,
+        /(?:dalam|ke|jadi|sebagai|format|bentuk)\s+(?:file\s+)?\.?(?:pptx|ppt)\b/i,
+        /(?:bikin(?:in|kan)?|buat(?:kan|in)?|create|generate)\s+(?:file\s+)?\.?(?:pptx|ppt|presentasi|slide)\b/i,
+    ];
+
+    for (const pattern of pptxPatterns) {
+        if (pattern.test(lowerText)) {
+            return { isFileRequest: true, format: 'pptx', isPptx: true };
+        }
+    }
 
     // Pattern matching for file creation requests
     const filePatterns = [
