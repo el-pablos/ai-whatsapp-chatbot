@@ -284,6 +284,14 @@ const orchestrate = async (normalizedMsg, ctx = {}) => {
                 mimetype: tr.result.mimetype,
             };
         }
+        if (tr.result?.type === 'pptx' && tr.result?.filePath) {
+            response.pptx = {
+                filePath: tr.result.filePath,
+                fileName: tr.result.fileName,
+                mimetype: tr.result.mimetype,
+                slideCount: tr.result.slideCount,
+            };
+        }
         if (tr.result?.mp3Path || tr.result?.videoPath) {
             response.media = {
                 path: tr.result.mp3Path || tr.result.videoPath,

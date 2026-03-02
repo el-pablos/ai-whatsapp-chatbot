@@ -21,6 +21,7 @@ const { smartSend } = require('./messageUtils');
 const { clearConversation, getStats } = require('./database');
 const { formatCalendarResponse, parseDateFromString } = require('./calendarHandler');
 const { createAndSendFile } = require('./fileCreator');
+const { sendPptx } = require('./pptxHandler');
 const { sendSticker } = require('./stickerHandler');
 const { cleanupFile } = require('./youtubeHandler');
 const { reportBugToOwner } = require('./bugReporter');
@@ -170,6 +171,14 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
             await createAndSendFile(sock, chatId, response.file.content, response.file.fileName, {
                 quoted: ctx.rawMsg,
                 caption: `📄 *${response.file.fileName}*\n\n_tap buat save ke device lu_`,
+            });
+        }
+
+        // Send PPTX presentation
+        if (response.pptx) {
+            await sendPptx(sock, chatId, response.pptx.filePath, response.pptx.fileName, {
+                quoted: ctx.rawMsg,
+                caption: `📊 *${response.pptx.fileName}* (${response.pptx.slideCount} slides)\n\n_tap buat save ke device lu_`,
             });
         }
 
