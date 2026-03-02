@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2025-07-31
+
+### 🎨 PPTX Generation — PowerPoint via AI
+
+Bot can now generate and send real `.pptx` (PowerPoint) files via WhatsApp.
+Uses a Python backend (`python-pptx`) called from Node.js through a reusable
+Python runner utility. Fully integrated into the AI-First tool-calling pipeline.
+
+### Added
+- **PPTX Generator** (`tools/pptx_generator.py`): Python script that builds .pptx files from JSON slide specs — supports title/bullets/summary slide types, speaker notes, 16:9 aspect ratio, styled colors
+- **Python Runner** (`src/pythonRunner.js`): Reusable Node.js utility to call Python scripts via `execFile` — auto-detects `python3`/`python`, timeout support, JSON result parsing
+- **PPTX Handler** (`src/pptxHandler.js`): Full pipeline — validateSlideSpec → generatePptx → sendPptx → cleanupFiles
+- **`presentation.create` tool** in Tool Registry (26 tools total)
+- **`presentation.create` feature** in Feature Registry
+- **`tools/requirements.txt`**: Python dependencies (`python-pptx>=1.0.0`)
+- **82 new tests** across 3 files (984 total, 26 suites):
+  - `tests/pythonRunner.test.js` (19 tests)
+  - `tests/pptxHandler.test.js` (60 tests)
+  - `tests/intentRouter.test.js` (+1 PPTX routing test)
+  - `tests/toolRegistry.test.js` (+2 presentation tests)
+
+### Changed
+- **aiOrchestrator.js**: Detects `type: 'pptx'` tool results, attaches `response.pptx`
+- **intentRouter.js**: Post-processes `response.pptx` — calls `sendPptx` with formatted caption
+- **fileCreator.js**: Added PPTX/PPT/DOCX/XLSX MIME types + PPTX detection patterns for delegation
+- **README.md**: Updated features, prerequisites (Python 3), architecture diagram, file tree, test count
+
 ## [3.0.0] - 2025-07-24
 
 ### 🏗️ Architecture — AI-First Orchestrator
