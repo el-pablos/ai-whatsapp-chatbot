@@ -14,8 +14,8 @@ const {
 
 describe('Tool Registry', () => {
     describe('TOOLS array', () => {
-        test('should have 25 tools', () => {
-            expect(TOOLS).toHaveLength(25);
+        test('should have 26 tools', () => {
+            expect(TOOLS).toHaveLength(26);
         });
 
         test('each tool should have required properties', () => {
@@ -98,6 +98,13 @@ describe('Tool Registry', () => {
             const t = getToolByName('admin.backup');
             expect(t).not.toBeNull();
             expect(t.requiresOwner).toBe(true);
+        });
+
+        test('should find presentation.create', () => {
+            const t = getToolByName('presentation.create');
+            expect(t).not.toBeNull();
+            expect(t.parameters.properties).toHaveProperty('title');
+            expect(t.parameters.properties).toHaveProperty('slides');
         });
 
         test('should return null for unknown name', () => {
@@ -258,6 +265,11 @@ describe('Tool Registry', () => {
         test('should have admin tools', () => {
             const adminTools = TOOLS.filter(t => t.name.startsWith('admin.'));
             expect(adminTools.length).toBeGreaterThanOrEqual(3);
+        });
+
+        test('should have presentation tools', () => {
+            const presTools = TOOLS.filter(t => t.name.startsWith('presentation.'));
+            expect(presTools.length).toBeGreaterThanOrEqual(1);
         });
     });
 
