@@ -1,28 +1,19 @@
 /**
- * AI WhatsApp Chatbot - Main Bot Service v2.7
+ * AI WhatsApp Chatbot - Main Bot Service v3.0
  *
- * Bot WhatsApp menggunakan @whiskeysockets/baileys dengan:
- * - Auto-setup: npm install, yt-dlp, ffmpeg on every boot
- * - Persona AI "Tama" via Copilot API
- * - Unlimited conversation memory (SQLite)
- * - Image/file understanding (Vision API)
- * - Universal Document Reader (70+ formats - NO LIMITS!)
- * - Reply-to-Media: analyze quoted media without re-sending
- * - File Creator: create & send files (.md, .txt, .csv, .json, etc.)
- * - Real-time Web Search: AI auto-searches internet when needed
- * - YouTube downloader (MP3/MP4)
- * - Location sharing (OpenStreetMap)
- * - Reply detection
- * - Ethnicity detection (fun feature)
- * - Calendar & holiday checker
- * - Mood & Tarot reading
- * - Auto reconnect handling
- * - Persistent auth (auth_info_baileys)
- * - Health Check server
- * - Cloudflare DNS automation
- * 
+ * Entry point & Baileys lifecycle manager.
+ * v3.0.0 AI-First Orchestrator architecture:
+ * - bot.js = Baileys connection + slim processMessage wrapper
+ * - AI decides EVERYTHING via tool-calling (25 tools, 30+ features)
+ * - messageNormalizer → intentRouter → aiOrchestrator pipeline
+ * - Modular registries: featureRegistry + toolRegistry
+ * - Context-rich prompts via promptComposer
+ *
+ * Fitur lengkap: AI chat, Vision API, 70+ doc formats, YouTube,
+ * web search, cuaca BMKG, lokasi, tarot, mood, sticker, dll.
+ *
  * @author Tama El Pablo
- * @version 2.7.0
+ * @version 3.0.0
  */
 
 // ═══════════════════════════════════════════════════════════

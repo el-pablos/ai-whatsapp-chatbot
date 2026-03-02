@@ -31,6 +31,7 @@ Semua percakapan disimpan di SQLite dengan context window 24 jam, jadi Tama bisa
 
 | Kategori | Fitur | Detail |
 |----------|-------|--------|
+| **AI Chat** | AI-First Orchestrator | Tool-calling architecture: AI decides actions via 25 callable tools (v3.0) |
 | **AI Chat** | Conversational AI | Claude Sonnet via Copilot API, persona Tama, bahasa gaul Jakarta |
 | **AI Chat** | Conversation Memory | SQLite 24-jam context window, 6 bulan retention |
 | **AI Chat** | User Preferences | Auto-detect nickname, bahasa, gaya respons |
@@ -75,7 +76,7 @@ Semua percakapan disimpan di SQLite dengan context window 24 jam, jadi Tama bisa
 | **Process Manager** | PM2 |
 | **Testing** | Jest |
 
-### Diagram Arsitektur
+### Diagram Arsitektur (v3.0.0 — AI-First Orchestrator)
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -90,35 +91,33 @@ Semua percakapan disimpan di SQLite dengan context window 24 jam, jadi Tama bisa
 │          Baileys client → QR/Pairing auth → Message listener        │
 └───────────────────────────────┬─────────────────────────────────────┘
                                 │
+        ┌───────────────────────▼───────────────────────┐
+        │            AI-FIRST ORCHESTRATOR               │
+        │                                               │
+        │  messageNormalizer.js   Baileys → uniform obj │
+        │  intentRouter.js       Fast-path + routing    │
+        │  promptComposer.js     Context-rich prompts   │
+        │  aiOrchestrator.js     Tool-calling loop      │
+        │  featureRegistry.js    30+ feature metadata   │
+        │  toolRegistry.js       25 AI-callable tools   │
+        └───────────────────────┬───────────────────────┘
+                                │
               ┌─────────────────┼─────────────────┐
               ▼                 ▼                 ▼
 ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-│  INFRASTRUCTURE  │ │  MESSAGE ROUTER  │ │  EXTERNAL APIs   │
-├──────────────────┤ │   (bot.js core)  │ ├──────────────────┤
-│ database.js      │ │                  │ │ Copilot API      │
-│  └─ SQLite WAL   │ │ Routing logic:   │ │  └─ Claude AI    │
-│ healthCheck.js   │ │  → media?        │ │ DuckDuckGo       │
-│  └─ Express:8008 │ │  → document?     │ │ BMKG API         │
-│ capabilities.js  │ │  → youtube?      │ │ OpenStreetMap    │
-│ bugReporter.js   │ │  → sticker?      │ │ Cloudflare DNS   │
-│ backupHandler.js │ │  → voice?        │ │ ipify            │
-│ dnsUpdater.js    │ │  → text → AI     │ └──────────────────┘
-└──────────────────┘ └────────┬─────────┘
-                              │
-        ┌──────────┬──────────┼──────────┬──────────┐
-        ▼          ▼          ▼          ▼          ▼
-  ┌──────────┐┌──────────┐┌──────────┐┌──────────┐┌──────────┐
-  │  MEDIA   ││    AI    ││ CONTENT  ││  UTILS   ││   FUN    │
-  │ HANDLERS ││ HANDLERS ││ HANDLERS ││ HANDLERS ││ HANDLERS │
-  ├──────────┤├──────────┤├──────────┤├──────────┤├──────────┤
-  │document  ││aiHandler ││youtube   ││fileCreatr││tarot     │
-  │media     ││webSearch ││weather   ││messageUtl││mood      │
-  │voice     ││          ││location  ││userProfil││calendar  │
-  │sticker   ││          ││calendar  ││errorUtils││          │
-  └──────────┘└──────────┘└──────────┘└──────────┘└──────────┘
+│  INFRASTRUCTURE  │ │ FEATURE HANDLERS │ │  EXTERNAL APIs   │
+├──────────────────┤ │  (tool targets)  │ ├──────────────────┤
+│ database.js      │ ├──────────────────┤ │ Copilot API      │
+│  └─ SQLite WAL   │ │ document  │media │ │  └─ Claude AI    │
+│ healthCheck.js   │ │ voice     │stick │ │  └─ tool_calls   │
+│  └─ Express:8008 │ │ youtube   │weath │ │ DuckDuckGo       │
+│ backupHandler.js │ │ webSearch │locat │ │ BMKG API         │
+│ dnsUpdater.js    │ │ tarot     │mood  │ │ OpenStreetMap    │
+│ capabilities.js  │ │ calendar  │file  │ │ Cloudflare DNS   │
+└──────────────────┘ └──────────────────┘ └──────────────────┘
 ```
 
-### Flowchart Message Processing
+### Flowchart Message Processing (v3.0.0)
 
 ```
                     ┌───────────────────────┐
@@ -136,37 +135,47 @@ Semua percakapan disimpan di SQLite dengan context window 24 jam, jadi Tama bisa
                     └───────────┬───────────┘
                                 │
                     ┌───────────▼───────────┐
-                    │  Simpan ke database   │
-                    │  (saveMessage)        │
+                    │  normalizeMessage()   │
+                    │  Baileys proto →      │
+                    │  { type, text, media }│
+                    └───────────┬───────────┘
+                                │
+                    ┌───────────▼───────────┐
+                    │  routeMessage()       │
+                    │  intentRouter.js      │
                     └───────────┬───────────┘
                                 │
               ┌─────────────────┼─────────────────┐
-              │                 │                 │
-    ┌─────────▼──────┐ ┌───────▼───────┐ ┌───────▼──────┐
-    │ Media message?  │ │ YouTube URL?  │ │ Text message │
-    │ (img/doc/voice) │ │               │ │              │
-    └────────┬───────┘ └───────┬───────┘ └──────┬───────┘
-             │                 │                 │
-    ┌────────▼───────┐ ┌───────▼───────┐ ┌──────▼───────┐
-    │ Route ke:      │ │ getVideoInfo  │ │ AI Handler   │
-    │ • imageHandler │ │ → AI analysis │ │ (Claude API) │
-    │ • docHandler   │ │ → format pick │ │              │
-    │ • voiceHandler │ │ → download    │ │ Cek trigger: │
-    │ • stickerMaker │ └───────────────┘ │ • webSearch  │
-    └────────────────┘                   │ • fileCreate │
-                                         │ • tarot      │
-                                         │ • weather    │
-                                         └──────┬───────┘
-                                                │
-                                     ┌──────────▼──────────┐
-                                     │  Kirim respons ke   │
-                                     │  user via WhatsApp  │
-                                     └──────────┬──────────┘
-                                                │
-                                     ┌──────────▼──────────┐
-                                     │  Simpan respons ke  │
-                                     │  database (memory)  │
-                                     └─────────────────────┘
+              │                                   │
+    ┌─────────▼──────────┐             ┌──────────▼──────────┐
+    │ Fast-path command? │             │ AI Orchestrator     │
+    │ (.s, .mp3, .mp4,   │             │ aiOrchestrator.js   │
+    │  .tarot, .mood)    │             └──────────┬──────────┘
+    └─────────┬──────────┘                        │
+              │                        ┌──────────▼──────────┐
+              │                        │ promptComposer →    │
+              │                        │ Claude API call     │
+              │                        │ with tools[] array  │
+              │                        └──────────┬──────────┘
+              │                                   │
+              │                        ┌──────────▼──────────┐
+              │                        │ tool_calls loop:    │
+              │                        │ executeTool() →     │
+              │                        │ feed result back →  │
+              │                        │ next AI response    │
+              │                        └──────────┬──────────┘
+              │                                   │
+              └───────────────┬───────────────────┘
+                              │
+                   ┌──────────▼──────────┐
+                   │  Kirim respons ke   │
+                   │  user via WhatsApp  │
+                   └──────────┬──────────┘
+                              │
+                   ┌──────────▼──────────┐
+                   │  Simpan respons ke  │
+                   │  database (memory)  │
+                   └─────────────────────┘
 ```
 
 ### Entity Relationship Diagram (ERD)
@@ -316,7 +325,13 @@ Health check server berjalan di port `8008`:
 ```
 ai-whatsapp-chatbot/
 ├── src/
-│   ├── bot.js                 # Entry point utama (2400+ baris)
+│   ├── bot.js                 # Entry point + Baileys lifecycle (618 baris)
+│   ├── featureRegistry.js     # 30+ feature metadata registry [v3.0]
+│   ├── toolRegistry.js        # 25 AI-callable tools + executeTool [v3.0]
+│   ├── messageNormalizer.js   # Baileys proto → uniform message obj [v3.0]
+│   ├── promptComposer.js      # Context-rich system prompt builder [v3.0]
+│   ├── aiOrchestrator.js      # Tool-calling loop + retry logic [v3.0]
+│   ├── intentRouter.js        # Fast-path commands + AI routing [v3.0]
 │   ├── aiHandler.js           # AI chat via Claude Sonnet
 │   ├── autoSetup.js           # Auto-install dependencies
 │   ├── backupHandler.js       # Database backup
@@ -340,7 +355,7 @@ ai-whatsapp-chatbot/
 │   ├── weatherHandler.js      # BMKG weather & gempa
 │   ├── webSearchHandler.js    # DuckDuckGo web search
 │   └── youtubeHandler.js      # YouTube download (yt-dlp)
-├── tests/                     # Jest test suites (696 tests)
+├── tests/                     # Jest test suites (902 tests, 24 suites)
 ├── scripts/
 │   ├── bootstrap.sh           # Setup script
 │   ├── doctor.js              # Dependency health check
@@ -372,7 +387,7 @@ npm run test:watch
 npm run doctor
 ```
 
-**Test Coverage:** 696 tests across 18 test suites.
+**Test Coverage:** 902 tests across 24 test suites.
 
 ---
 
