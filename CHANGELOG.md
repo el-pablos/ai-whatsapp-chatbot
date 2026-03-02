@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2025-07-24
+
+### 🏗️ Architecture — AI-First Orchestrator
+
+Complete architectural overhaul: every feature is now an AI-callable tool.
+The Copilot API dynamically selects and chains tools via OpenAI-compatible
+function-calling. No more static if-else routing.
+
+### Added
+- **Feature Registry** (`src/featureRegistry.js`): 30+ feature entries with metadata, examples, module mappings
+- **Tool Registry** (`src/toolRegistry.js`): 25 AI-callable tools with JSON schema + `execute(params, ctx)`
+- **Message Normalizer** (`src/messageNormalizer.js`): Standardizes Baileys proto messages into uniform shape
+- **Prompt Composer** (`src/promptComposer.js`): Builds context-rich prompts with persona, tools, user profile
+- **AI Orchestrator** (`src/aiOrchestrator.js`): Tool-calling loop (max 3 iterations), retry, legacy marker fallback
+- **Intent Router** (`src/intentRouter.js`): Fast-path commands + AI orchestrator default path
+- **206 new tests** across 6 test files for all new modules (902 total, 24 suites)
+
+### Changed
+- **bot.js**: Refactored from 2464 → 617 lines (75% reduction); all routing delegated to Intent Router
+- **processMessage()**: Reduced from ~800 lines to ~40 lines: dedup → normalize → route
+- All old `handle*` functions removed (handleQuotedMediaReply, handleSpecialCommands, handleVoiceMessage, handleMediaMessage, handleLocationRequest, handleUserLocation, handleTarotRequest, handleYesNoTarot, handleMoodRequest, handleYoutubeUrl, handleYoutubeDownload)
+- Banner updated to v3.0.0
+
+### Removed
+- `_extractRawTextFromBuffer` helper (dead code)
+- `pendingYoutubeDownloads` Map (dead code)
+- `createThinkingIndicator` function (dead code)
+- `.claude/` directory from git tracking
+
 ## [2.6.0] - 2026-02-24
 
 ### Added
