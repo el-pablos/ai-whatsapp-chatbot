@@ -31,7 +31,7 @@ Semua percakapan disimpan di SQLite dengan context window 24 jam, jadi Tama bisa
 
 | Kategori | Fitur | Detail |
 |----------|-------|--------|
-| **AI Chat** | AI-First Orchestrator | Tool-calling architecture: AI decides actions via 25 callable tools (v3.0) |
+| **AI Chat** | AI-First Orchestrator | Tool-calling architecture: AI decides actions via 26 callable tools (v3.1) |
 | **AI Chat** | Conversational AI | Claude Sonnet via Copilot API, persona Tama, bahasa gaul Jakarta |
 | **AI Chat** | Conversation Memory | SQLite 24-jam context window, 6 bulan retention |
 | **AI Chat** | User Preferences | Auto-detect nickname, bahasa, gaya respons |
@@ -51,6 +51,7 @@ Semua percakapan disimpan di SQLite dengan context window 24 jam, jadi Tama bisa
 | **Fun** | Tarot Reading | 78-kartu tarot spread lengkap |
 | **Fun** | Mood Reader | Analisis mood dari chat |
 | **File** | File Creator | Bikin dan kirim file (.md, .txt, .csv, .json, dll) |
+| **File** | PPTX Generator | Generate presentasi PowerPoint (.pptx) via AI — Python backend (python-pptx) |
 | **Infra** | Health Check | Express server `/health`, `/status`, `/dashboard` |
 | **Infra** | Auto Setup | Auto-install yt-dlp, ffmpeg, pdftotext, LibreOffice |
 | **Infra** | DNS Updater | Auto-update Cloudflare DNS record |
@@ -72,6 +73,7 @@ Semua percakapan disimpan di SQLite dengan context window 24 jam, jadi Tama bisa
 | **HTTP Server** | Express 5 |
 | **Image Processing** | sharp |
 | **Document Parsing** | pdf-parse, mammoth, adm-zip, textract |
+| **Presentation Gen** | python-pptx (Python 3) |
 | **Media Tools** | yt-dlp, ffmpeg, fluent-ffmpeg |
 | **Process Manager** | PM2 |
 | **Testing** | Jest |
@@ -99,7 +101,7 @@ Semua percakapan disimpan di SQLite dengan context window 24 jam, jadi Tama bisa
         │  promptComposer.js     Context-rich prompts   │
         │  aiOrchestrator.js     Tool-calling loop      │
         │  featureRegistry.js    30+ feature metadata   │
-        │  toolRegistry.js       25 AI-callable tools   │
+        │  toolRegistry.js       26 AI-callable tools   │
         └───────────────────────┬───────────────────────┘
                                 │
               ┌─────────────────┼─────────────────┐
@@ -222,6 +224,7 @@ Semua percakapan disimpan di SQLite dengan context window 24 jam, jadi Tama bisa
 
 - **Node.js** >= 20.0.0
 - **npm** >= 9
+- **Python 3** >= 3.8 + `python-pptx` (untuk PPTX generation)
 - **ffmpeg** (untuk audio/video processing)
 - **yt-dlp** (untuk YouTube download)
 - **WhatsApp** aktif di HP (untuk scan QR)
@@ -241,9 +244,14 @@ cp .env.example .env
 npm run setup
 # Atau manual:
 npm install
+
+# 4. Install Python dependencies (untuk PPTX generation)
+pip install -r tools/requirements.txt
+
+# 5. Start bot
 node src/bot.js
 
-# 4. Scan QR code yang muncul di terminal dengan WhatsApp HP
+# 6. Scan QR code yang muncul di terminal dengan WhatsApp HP
 ```
 
 ### Menggunakan PM2 (Production)
@@ -343,6 +351,8 @@ ai-whatsapp-chatbot/
 │   ├── documentHandler.js     # Universal document reader (70+ format)
 │   ├── errorUtils.js          # Error handling utilities
 │   ├── fileCreator.js         # Create & send files
+│   ├── pptxHandler.js         # PPTX generation (python-pptx backend) [v3.1]
+│   ├── pythonRunner.js        # Python script runner utility [v3.1]
 │   ├── healthCheck.js         # Express health check server
 │   ├── locationHandler.js     # Location search (OpenStreetMap)
 │   ├── mediaHandler.js        # Image/media + Vision API
@@ -355,7 +365,10 @@ ai-whatsapp-chatbot/
 │   ├── weatherHandler.js      # BMKG weather & gempa
 │   ├── webSearchHandler.js    # DuckDuckGo web search
 │   └── youtubeHandler.js      # YouTube download (yt-dlp)
-├── tests/                     # Jest test suites (902 tests, 24 suites)
+├── tools/
+│   ├── pptx_generator.py      # Python PPTX generator script [v3.1]
+│   └── requirements.txt       # Python dependencies
+├── tests/                     # Jest test suites (984 tests, 26 suites)
 ├── scripts/
 │   ├── bootstrap.sh           # Setup script
 │   ├── doctor.js              # Dependency health check
@@ -387,7 +400,7 @@ npm run test:watch
 npm run doctor
 ```
 
-**Test Coverage:** 902 tests across 24 test suites.
+**Test Coverage:** 984 tests across 26 test suites.
 
 ---
 
