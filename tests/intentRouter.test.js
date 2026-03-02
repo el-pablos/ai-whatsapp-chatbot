@@ -48,6 +48,9 @@ jest.mock('../src/youtubeHandler', () => ({
     downloadAsMP3: jest.fn(),
     downloadAsMP4: jest.fn(),
 }));
+jest.mock('../src/pptxHandler', () => ({
+    sendPptx: jest.fn(),
+}));
 jest.mock('../src/fileCreator', () => ({
     createAndSendFile: jest.fn(),
     parseFileMarker: jest.fn(() => null),
@@ -324,6 +327,36 @@ describe('Intent Router', () => {
 
             expect(sock.sendPresenceUpdate).toHaveBeenCalledWith('composing', msg.chatId);
             expect(sock.sendPresenceUpdate).toHaveBeenCalledWith('paused', msg.chatId);
+        });
+
+        test('should send PPTX when orchestrate returns response.pptx', async () => {
+            orchestrate.mockResolvedValueOnce({
+                text: 'nih presentasi lu',
+                pptx: {
+                    filePath: '/tmp/test.pptx',
+                    fileName: 'Proposal.pptx',
+                    slideCount: 5,
+                },
+            });
+            const sock = makeSock();
+            const msg = makeMsg({ text: 'buatin gw pptx tentang AI' });
+
+            await routeMessage(msg, { sock, rawMsg: msg.raw });
+
+            const { sendPptx } = require('../src/pptxHandler');
+            expect(sendPptx).toHaveBeenCalledWith(
+                sock,
+                msg.chatId,
+                '/tmp/test.pptx',
+                'Proposal.pptx',
+                expect.objectContaining({
+                    quoted: msg.raw,
+                    caption: expect.stringContaining('Proposal.pptx'),
+                }),
+            );
+            // Caption should include slide count
+            const captionArg = sendPptx.mock.calls[0][4].caption;
+            expect(captionArg).toContain('5 slides');
         });
     });
 
