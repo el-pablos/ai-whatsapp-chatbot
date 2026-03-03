@@ -23,6 +23,7 @@ const { smartTruncate, COPILOT_API_URL, COPILOT_API_MODEL, getRandomErrorRespons
 const { classifyUser } = require('./userProfileHelper');
 const { getConversationHistory, saveMessage, getUserPreferences, getPreferredName, detectNicknamePreference } = require('./database');
 const { splitMessage, smartSend, WA_MESSAGE_LIMIT } = require('./messageUtils');
+const { detectPptxRequest } = require('./pptxHandler');
 
 // ═══════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -163,6 +164,35 @@ const orchestrate = async (normalizedMsg, ctx = {}) => {
         imageBase64: normalizedMsg.attachments?.[0]?.type === 'image' ? null : undefined, // handled separately
     });
 
+    // ── 5b. Inject contextual tool-use hints ──────────────
+    const hasDocAttachment = normalizedMsg.attachments?.some(a => a.type === 'document');
+    const pptxDetection = text ? detectPptxRequest(text) : { isPptxRequest: false };
+
+    if (hasDocAttachment && pptxDetection.isPptxRequest) {
+        // User sent a document AND wants a PPTX → inject explicit 2-step hint
+        messages.push({
+            role: 'system',
+            content: `[INSTRUKSI WAJIB] User mengirim dokumen dan meminta dibuatkan presentasi/PPT/slide. Kamu WAJIB:
+1. Panggil tool document_extract_text untuk baca isi dokumen
+2. Setelah dapat isi dokumen, panggil tool presentation_create dengan slides yang disusun dari konten dokumen
+JANGAN hanya menjawab dengan teks. WAJIB panggil kedua tool tersebut.`,
+        });
+        console.log(`[Orchestrator] PPTX+Doc hint injected | chatId=${chatId} slideCount=${pptxDetection.slideCount}`);
+    } else if (pptxDetection.isPptxRequest) {
+        // User wants PPTX without doc → inject hint to use presentation_create
+        messages.push({
+            role: 'system',
+            content: `[INSTRUKSI WAJIB] User meminta dibuatkan presentasi/PPT/slide (${pptxDetection.slideCount} slides). Kamu WAJIB panggil tool presentation_create. JANGAN hanya menjawab dengan teks.`,
+        });
+        console.log(`[Orchestrator] PPTX hint injected | chatId=${chatId} slideCount=${pptxDetection.slideCount}`);
+    } else if (hasDocAttachment) {
+        // User sent a document → remind about document_extract_text
+        messages.push({
+            role: 'system',
+            content: `[HINT] User mengirim dokumen. Gunakan tool document_extract_text untuk membaca isi dokumen jika diperlukan.`,
+        });
+    }
+
     // ── 6. Choose tools for this user ─────────────────────
     const tools = isOwner ? getToolsForOwner() : getToolsForAPI();
 
@@ -211,8 +241,11 @@ const orchestrate = async (normalizedMsg, ctx = {}) => {
             // ── No tool calls → we're done ────────────────
             if (!msg.tool_calls || msg.tool_calls.length === 0) {
                 finalText = msg.content || '';
+                console.log(`[Orchestrator] iter=${iteration} AI responded with text (no tool_calls) | chatId=${chatId} textLen=${(finalText || '').length}`);
                 break;
             }
+
+            console.log(`[Orchestrator] iter=${iteration} AI requested ${msg.tool_calls.length} tool_call(s) | chatId=${chatId} tools=[${msg.tool_calls.map(tc => tc.function?.name).join(',')}]`);
 
             // ── Process tool calls ────────────────────────
             // Add assistant message with tool_calls to conversation

@@ -379,6 +379,76 @@ describe('AI Orchestrator', () => {
             expect(axios.post).toHaveBeenCalledTimes(2);
         });
 
+        test('should inject PPTX+Doc hint when document attached and PPT requested', async () => {
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [{ message: { content: 'siap w buatin' } }],
+                },
+            });
+
+            await orchestrate(makeNormalized({
+                text: 'bikinin ppt 5 slide soal ini',
+                messageType: 'document',
+                attachments: [{ type: 'document', fileName: 'test.txt', mimetype: 'text/plain' }],
+            }));
+
+            // The messages sent to API should contain a system hint about PPTX+doc chaining
+            const body = axios.post.mock.calls[0][1];
+            const systemHints = body.messages.filter(m => m.role === 'system' && m.content.includes('INSTRUKSI WAJIB'));
+            expect(systemHints.length).toBeGreaterThan(0);
+            expect(systemHints[0].content).toContain('document_extract_text');
+            expect(systemHints[0].content).toContain('presentation_create');
+        });
+
+        test('should inject PPTX hint when PPT requested without document', async () => {
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [{ message: { content: 'siap w buatin' } }],
+                },
+            });
+
+            await orchestrate(makeNormalized({
+                text: 'bikinin ppt 5 slide soal machine learning',
+            }));
+
+            const body = axios.post.mock.calls[0][1];
+            const systemHints = body.messages.filter(m => m.role === 'system' && m.content.includes('INSTRUKSI WAJIB'));
+            expect(systemHints.length).toBeGreaterThan(0);
+            expect(systemHints[0].content).toContain('presentation_create');
+        });
+
+        test('should inject document hint when document attached without PPT request', async () => {
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [{ message: { content: 'isi file nya...' } }],
+                },
+            });
+
+            await orchestrate(makeNormalized({
+                text: 'baca ini dong',
+                messageType: 'document',
+                attachments: [{ type: 'document', fileName: 'data.txt', mimetype: 'text/plain' }],
+            }));
+
+            const body = axios.post.mock.calls[0][1];
+            const docHints = body.messages.filter(m => m.role === 'system' && m.content.includes('document_extract_text'));
+            expect(docHints.length).toBeGreaterThan(0);
+        });
+
+        test('should NOT inject hints for normal text messages', async () => {
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [{ message: { content: 'halo juga!' } }],
+                },
+            });
+
+            await orchestrate(makeNormalized({ text: 'halo apa kabar' }));
+
+            const body = axios.post.mock.calls[0][1];
+            const hints = body.messages.filter(m => m.role === 'system' && (m.content.includes('INSTRUKSI WAJIB') || m.content.includes('[HINT]')));
+            expect(hints.length).toBe(0);
+        });
+
         test('should handle empty choices', async () => {
             axios.post.mockResolvedValueOnce({
                 data: { choices: [] },
