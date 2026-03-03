@@ -71,10 +71,13 @@ const parseFileMarker = (text) => {
  *
  * @param {Array} messages - OpenAI-format messages array
  * @param {Array|null} tools - tools schema or null
- * @param {number} retryCount
+ * @param {object} options - additional options
+ * @param {string} options.toolChoice - 'auto' | 'required' | 'none'
+ * @param {number} options.retryCount - internal retry counter
  * @returns {object} response.data
  */
-const callCopilotAPI = async (messages, tools = null, retryCount = 0) => {
+const callCopilotAPI = async (messages, tools = null, options = {}) => {
+    const { toolChoice = 'auto', retryCount = 0 } = options;
     const body = {
         model: COPILOT_API_MODEL,
         messages,
@@ -83,7 +86,7 @@ const callCopilotAPI = async (messages, tools = null, retryCount = 0) => {
 
     if (tools && tools.length > 0) {
         body.tools = tools;
-        body.tool_choice = 'auto';
+        body.tool_choice = toolChoice;
     }
 
     try {
@@ -113,7 +116,7 @@ const callCopilotAPI = async (messages, tools = null, retryCount = 0) => {
                 const delay = 2000 * (retryCount + 1);
                 console.log(`[Orchestrator] Retrying API call ${retryCount + 1}/${MAX_RETRIES} in ${delay}ms (reason: ${errCode || `HTTP ${status}`})`);
                 await new Promise(r => setTimeout(r, delay));
-                return callCopilotAPI(messages, tools, retryCount + 1);
+                return callCopilotAPI(messages, tools, { toolChoice, retryCount: retryCount + 1 });
             }
         }
 
@@ -167,9 +170,11 @@ const orchestrate = async (normalizedMsg, ctx = {}) => {
     // ── 5b. Inject contextual tool-use hints ──────────────
     const hasDocAttachment = normalizedMsg.attachments?.some(a => a.type === 'document');
     const pptxDetection = text ? detectPptxRequest(text) : { isPptxRequest: false };
+    let forceToolUse = false; // When true, uses tool_choice='required' on first iteration
 
     if (hasDocAttachment && pptxDetection.isPptxRequest) {
         // User sent a document AND wants a PPTX → inject explicit 2-step hint
+        forceToolUse = true;
         messages.push({
             role: 'system',
             content: `[INSTRUKSI WAJIB] User mengirim dokumen dan meminta dibuatkan presentasi/PPT/slide. Kamu WAJIB:
@@ -177,14 +182,15 @@ const orchestrate = async (normalizedMsg, ctx = {}) => {
 2. Setelah dapat isi dokumen, panggil tool presentation_create dengan slides yang disusun dari konten dokumen
 JANGAN hanya menjawab dengan teks. WAJIB panggil kedua tool tersebut.`,
         });
-        console.log(`[Orchestrator] PPTX+Doc hint injected | chatId=${chatId} slideCount=${pptxDetection.slideCount}`);
+        console.log(`[Orchestrator] PPTX+Doc hint injected (forceToolUse=true) | chatId=${chatId} slideCount=${pptxDetection.slideCount}`);
     } else if (pptxDetection.isPptxRequest) {
         // User wants PPTX without doc → inject hint to use presentation_create
+        forceToolUse = true;
         messages.push({
             role: 'system',
             content: `[INSTRUKSI WAJIB] User meminta dibuatkan presentasi/PPT/slide (${pptxDetection.slideCount} slides). Kamu WAJIB panggil tool presentation_create. JANGAN hanya menjawab dengan teks.`,
         });
-        console.log(`[Orchestrator] PPTX hint injected | chatId=${chatId} slideCount=${pptxDetection.slideCount}`);
+        console.log(`[Orchestrator] PPTX hint injected (forceToolUse=true) | chatId=${chatId} slideCount=${pptxDetection.slideCount}`);
     } else if (hasDocAttachment) {
         // User sent a document → remind about document_extract_text
         messages.push({
@@ -228,7 +234,13 @@ JANGAN hanya menjawab dengan teks. WAJIB panggil kedua tool tersebut.`,
         while (iteration < MAX_TOOL_ITERATIONS) {
             iteration++;
 
-            const data = await callCopilotAPI(messages, tools);
+            // Force tool_choice='required' on first iteration when PPTX/document action is detected
+            const toolChoice = (forceToolUse && iteration === 1) ? 'required' : 'auto';
+            if (toolChoice === 'required') {
+                console.log(`[Orchestrator] Using tool_choice=required (iter=${iteration}) | chatId=${chatId}`);
+            }
+
+            const data = await callCopilotAPI(messages, tools, { toolChoice });
             const choice = data.choices?.[0];
 
             if (!choice) {

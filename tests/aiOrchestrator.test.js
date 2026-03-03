@@ -172,6 +172,19 @@ describe('AI Orchestrator', () => {
             expect(body.tool_choice).toBeUndefined();
         });
 
+        test('should respect tool_choice option', async () => {
+            axios.post.mockResolvedValueOnce({
+                data: { choices: [{ message: { content: 'ok' } }] },
+            });
+
+            const tools = [{ type: 'function', function: { name: 'test_tool' } }];
+            await callCopilotAPI([{ role: 'user', content: 'hi' }], tools, { toolChoice: 'required' });
+
+            const body = axios.post.mock.calls[0][1];
+            expect(body.tools).toBe(tools);
+            expect(body.tool_choice).toBe('required');
+        });
+
         test('should throw TOKEN_EXPIRED on 401', async () => {
             axios.post.mockRejectedValueOnce({
                 response: { status: 401 },
@@ -398,6 +411,8 @@ describe('AI Orchestrator', () => {
             expect(systemHints.length).toBeGreaterThan(0);
             expect(systemHints[0].content).toContain('document_extract_text');
             expect(systemHints[0].content).toContain('presentation_create');
+            // Must use tool_choice='required' to force tool call
+            expect(body.tool_choice).toBe('required');
         });
 
         test('should inject PPTX hint when PPT requested without document', async () => {
@@ -415,6 +430,8 @@ describe('AI Orchestrator', () => {
             const systemHints = body.messages.filter(m => m.role === 'system' && m.content.includes('INSTRUKSI WAJIB'));
             expect(systemHints.length).toBeGreaterThan(0);
             expect(systemHints[0].content).toContain('presentation_create');
+            // Must use tool_choice='required'
+            expect(body.tool_choice).toBe('required');
         });
 
         test('should inject document hint when document attached without PPT request', async () => {
@@ -447,6 +464,8 @@ describe('AI Orchestrator', () => {
             const body = axios.post.mock.calls[0][1];
             const hints = body.messages.filter(m => m.role === 'system' && (m.content.includes('INSTRUKSI WAJIB') || m.content.includes('[HINT]')));
             expect(hints.length).toBe(0);
+            // Normal messages should use tool_choice='auto', not 'required'
+            expect(body.tool_choice).toBe('auto');
         });
 
         test('should handle empty choices', async () => {
