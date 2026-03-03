@@ -310,7 +310,7 @@ describe('AI Orchestrator', () => {
                                 id: 'call_1',
                                 type: 'function',
                                 function: {
-                                    name: 'calendar.today',
+                                    name: 'calendar_today',
                                     arguments: '{}',
                                 },
                             }],

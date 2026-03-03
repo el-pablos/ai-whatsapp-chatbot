@@ -36,9 +36,9 @@ describe('Tool Registry', () => {
             expect(new Set(names).size).toBe(names.length);
         });
 
-        test('tool names should use dot-separated namespace', () => {
+        test('tool names should use underscore-separated namespace', () => {
             TOOLS.forEach(t => {
-                expect(t.name).toMatch(/^[a-z]+\.[a-z0-9_]+$/);
+                expect(t.name).toMatch(/^[a-z]+_[a-z0-9_]+$/);
             });
         });
 
@@ -59,49 +59,49 @@ describe('Tool Registry', () => {
     });
 
     describe('getToolByName()', () => {
-        test('should find document.extract_text', () => {
-            const t = getToolByName('document.extract_text');
+        test('should find document_extract_text', () => {
+            const t = getToolByName('document_extract_text');
             expect(t).not.toBeNull();
-            expect(t.name).toBe('document.extract_text');
+            expect(t.name).toBe('document_extract_text');
         });
 
-        test('should find web.search', () => {
-            const t = getToolByName('web.search');
+        test('should find web_search', () => {
+            const t = getToolByName('web_search');
             expect(t).not.toBeNull();
             expect(t.parameters.properties).toHaveProperty('query');
         });
 
-        test('should find youtube.get_info', () => {
-            expect(getToolByName('youtube.get_info')).not.toBeNull();
+        test('should find youtube_get_info', () => {
+            expect(getToolByName('youtube_get_info')).not.toBeNull();
         });
 
-        test('should find weather.forecast', () => {
-            const t = getToolByName('weather.forecast');
+        test('should find weather_forecast', () => {
+            const t = getToolByName('weather_forecast');
             expect(t).not.toBeNull();
             expect(t.parameters.properties).toHaveProperty('city');
         });
 
-        test('should find tarot.reading', () => {
-            const t = getToolByName('tarot.reading');
+        test('should find tarot_reading', () => {
+            const t = getToolByName('tarot_reading');
             expect(t).not.toBeNull();
             expect(t.parameters.properties).toHaveProperty('question');
         });
 
-        test('should find file.create', () => {
-            const t = getToolByName('file.create');
+        test('should find file_create', () => {
+            const t = getToolByName('file_create');
             expect(t).not.toBeNull();
             expect(t.parameters.required).toContain('fileName');
             expect(t.parameters.required).toContain('content');
         });
 
-        test('should find admin.backup', () => {
-            const t = getToolByName('admin.backup');
+        test('should find admin_backup', () => {
+            const t = getToolByName('admin_backup');
             expect(t).not.toBeNull();
             expect(t.requiresOwner).toBe(true);
         });
 
-        test('should find presentation.create', () => {
-            const t = getToolByName('presentation.create');
+        test('should find presentation_create', () => {
+            const t = getToolByName('presentation_create');
             expect(t).not.toBeNull();
             expect(t.parameters.properties).toHaveProperty('title');
             expect(t.parameters.properties).toHaveProperty('slides');
@@ -126,15 +126,15 @@ describe('Tool Registry', () => {
         test('should exclude owner-only tools', () => {
             const tools = getToolsForAPI();
             const names = tools.map(t => t.function.name);
-            expect(names).not.toContain('admin.backup');
+            expect(names).not.toContain('admin_backup');
         });
 
         test('should include normal tools', () => {
             const tools = getToolsForAPI();
             const names = tools.map(t => t.function.name);
-            expect(names).toContain('web.search');
-            expect(names).toContain('weather.forecast');
-            expect(names).toContain('tarot.reading');
+            expect(names).toContain('web_search');
+            expect(names).toContain('weather_forecast');
+            expect(names).toContain('tarot_reading');
         });
     });
 
@@ -143,7 +143,7 @@ describe('Tool Registry', () => {
             const tools = getToolsForOwner();
             expect(tools.length).toBe(TOOLS.length);
             const names = tools.map(t => t.function.name);
-            expect(names).toContain('admin.backup');
+            expect(names).toContain('admin_backup');
         });
 
         test('should return OpenAI-compatible format', () => {
@@ -166,33 +166,33 @@ describe('Tool Registry', () => {
             expect(result.error).toContain('Unknown tool');
         });
 
-        test('should execute document.supported_formats', async () => {
-            const result = await executeTool('document.supported_formats', {}, {});
+        test('should execute document_supported_formats', async () => {
+            const result = await executeTool('document_supported_formats', {}, {});
             expect(result.success).toBe(true);
             expect(result.formats).toBeDefined();
         });
 
-        test('should execute calendar.today', async () => {
-            const result = await executeTool('calendar.today', {}, {});
+        test('should execute calendar_today', async () => {
+            const result = await executeTool('calendar_today', {}, {});
             expect(result.success).toBe(true);
             expect(result.text).toBeDefined();
         });
 
-        test('should execute calendar.holidays', async () => {
-            const result = await executeTool('calendar.holidays', {}, {});
+        test('should execute calendar_holidays', async () => {
+            const result = await executeTool('calendar_holidays', {}, {});
             expect(result.success).toBe(true);
             expect(result.text).toBeDefined();
         });
 
-        test('should execute admin.stats', async () => {
+        test('should execute admin_stats', async () => {
             // stats may fail without DB init, but executeTool should catch
-            const result = await executeTool('admin.stats', {}, {});
+            const result = await executeTool('admin_stats', {}, {});
             // It will either succeed or return error gracefully
             expect(result).toHaveProperty('success');
         });
 
-        test('should execute file.create', async () => {
-            const result = await executeTool('file.create', {
+        test('should execute file_create', async () => {
+            const result = await executeTool('file_create', {
                 fileName: 'test.md',
                 content: '# Hello\nWorld',
             }, {});
@@ -202,18 +202,18 @@ describe('Tool Registry', () => {
             expect(result.type).toBe('file');
         });
 
-        test('should execute document.get_info', async () => {
-            const result = await executeTool('document.get_info', { filename: 'test.pdf' }, {});
+        test('should execute document_get_info', async () => {
+            const result = await executeTool('document_get_info', { filename: 'test.pdf' }, {});
             expect(result.success).toBe(true);
         });
 
         test('should handle execution errors gracefully', async () => {
-            const result = await executeTool('document.extract_text', {}, { mediaBuffer: null });
+            const result = await executeTool('document_extract_text', {}, { mediaBuffer: null });
             expect(result.success).toBe(false);
         });
 
-        test('should execute tarot.yesno', async () => {
-            const result = await executeTool('tarot.yesno', { question: 'will it rain?' }, {});
+        test('should execute tarot_yesno', async () => {
+            const result = await executeTool('tarot_yesno', { question: 'will it rain?' }, {});
             expect(result.success).toBe(true);
             expect(result.text).toBeDefined();
         });
@@ -228,15 +228,15 @@ describe('Tool Registry', () => {
 
         test('should contain tool names', () => {
             const summary = getToolSummary();
-            expect(summary).toContain('web.search');
-            expect(summary).toContain('weather.forecast');
-            expect(summary).toContain('file.create');
+            expect(summary).toContain('web_search');
+            expect(summary).toContain('weather_forecast');
+            expect(summary).toContain('file_create');
         });
 
         test('should have parameter names in parentheses', () => {
             const summary = getToolSummary();
-            expect(summary).toContain('web.search(query)');
-            expect(summary).toContain('file.create(fileName, content)');
+            expect(summary).toContain('web_search(query)');
+            expect(summary).toContain('file_create(fileName, content)');
         });
 
         test('each line should describe one tool', () => {
@@ -248,44 +248,44 @@ describe('Tool Registry', () => {
 
     describe('Tool categories coverage', () => {
         test('should have document tools', () => {
-            const docTools = TOOLS.filter(t => t.name.startsWith('document.'));
+            const docTools = TOOLS.filter(t => t.name.startsWith('document_'));
             expect(docTools.length).toBeGreaterThanOrEqual(2);
         });
 
         test('should have youtube tools', () => {
-            const ytTools = TOOLS.filter(t => t.name.startsWith('youtube.'));
+            const ytTools = TOOLS.filter(t => t.name.startsWith('youtube_'));
             expect(ytTools.length).toBeGreaterThanOrEqual(3);
         });
 
         test('should have calendar tools', () => {
-            const calTools = TOOLS.filter(t => t.name.startsWith('calendar.'));
+            const calTools = TOOLS.filter(t => t.name.startsWith('calendar_'));
             expect(calTools.length).toBeGreaterThanOrEqual(5);
         });
 
         test('should have admin tools', () => {
-            const adminTools = TOOLS.filter(t => t.name.startsWith('admin.'));
+            const adminTools = TOOLS.filter(t => t.name.startsWith('admin_'));
             expect(adminTools.length).toBeGreaterThanOrEqual(3);
         });
 
         test('should have presentation tools', () => {
-            const presTools = TOOLS.filter(t => t.name.startsWith('presentation.'));
+            const presTools = TOOLS.filter(t => t.name.startsWith('presentation_'));
             expect(presTools.length).toBeGreaterThanOrEqual(1);
         });
     });
 
     describe('requiresMedia tools', () => {
-        test('document.extract_text should require document media', () => {
-            const t = getToolByName('document.extract_text');
+        test('document_extract_text should require document media', () => {
+            const t = getToolByName('document_extract_text');
             expect(t.requiresMedia).toBe('document');
         });
 
-        test('sticker.make should require image/video media', () => {
-            const t = getToolByName('sticker.make');
+        test('sticker_make should require image/video media', () => {
+            const t = getToolByName('sticker_make');
             expect(t.requiresMedia).toBe('image_or_video');
         });
 
-        test('voice.transcribe should require audio', () => {
-            const t = getToolByName('voice.transcribe');
+        test('voice_transcribe should require audio', () => {
+            const t = getToolByName('voice_transcribe');
             expect(t.requiresMedia).toBe('audio');
         });
     });

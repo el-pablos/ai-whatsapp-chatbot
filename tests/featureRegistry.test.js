@@ -40,9 +40,9 @@ describe('Feature Registry', () => {
             expect(new Set(ids).size).toBe(ids.length);
         });
 
-        test('feature IDs should use dot-separated namespace', () => {
+        test('feature IDs should use underscore-separated namespace', () => {
             FEATURES.forEach(f => {
-                expect(f.id).toMatch(/^[a-z]+\.[a-z0-9_]+$/);
+                expect(f.id).toMatch(/^[a-z]+_[a-z0-9_]+$/);
             });
         });
     });
@@ -57,46 +57,46 @@ describe('Feature Registry', () => {
 
     describe('getFeatureById()', () => {
         test('should find ai.chat', () => {
-            const f = getFeatureById('ai.chat');
+            const f = getFeatureById('ai_chat');
             expect(f).not.toBeNull();
             expect(f.name).toContain('AI Chat');
             expect(f.module).toBe('aiHandler');
         });
 
         test('should find ai.vision', () => {
-            const f = getFeatureById('ai.vision');
+            const f = getFeatureById('ai_vision');
             expect(f).not.toBeNull();
             expect(f.module).toBe('aiHandler');
         });
 
         test('should find document.extract', () => {
-            const f = getFeatureById('document.extract');
+            const f = getFeatureById('document_extract');
             expect(f).not.toBeNull();
             expect(f.module).toBe('documentHandler');
         });
 
         test('should find youtube.info', () => {
-            expect(getFeatureById('youtube.info')).not.toBeNull();
+            expect(getFeatureById('youtube_info')).not.toBeNull();
         });
 
-        test('should find web.search', () => {
-            expect(getFeatureById('web.search')).not.toBeNull();
+        test('should find web_search', () => {
+            expect(getFeatureById('web_search')).not.toBeNull();
         });
 
-        test('should find weather.forecast', () => {
-            expect(getFeatureById('weather.forecast')).not.toBeNull();
+        test('should find weather_forecast', () => {
+            expect(getFeatureById('weather_forecast')).not.toBeNull();
         });
 
-        test('should find tarot.reading', () => {
-            expect(getFeatureById('tarot.reading')).not.toBeNull();
+        test('should find tarot_reading', () => {
+            expect(getFeatureById('tarot_reading')).not.toBeNull();
         });
 
-        test('should find calendar.today', () => {
-            expect(getFeatureById('calendar.today')).not.toBeNull();
+        test('should find calendar_today', () => {
+            expect(getFeatureById('calendar_today')).not.toBeNull();
         });
 
-        test('should find file.create', () => {
-            expect(getFeatureById('file.create')).not.toBeNull();
+        test('should find file_create', () => {
+            expect(getFeatureById('file_create')).not.toBeNull();
         });
 
         test('should return null for unknown ID', () => {
@@ -165,15 +165,15 @@ describe('Feature Registry', () => {
 
         test('should contain feature IDs', () => {
             const cards = generateCapabilityCards();
-            expect(cards).toContain('[ai.chat]');
-            expect(cards).toContain('[web.search]');
-            expect(cards).toContain('[tarot.reading]');
+            expect(cards).toContain('[ai_chat]');
+            expect(cards).toContain('[web_search]');
+            expect(cards).toContain('[tarot_reading]');
         });
 
         test('should NOT contain system features', () => {
             const cards = generateCapabilityCards();
-            expect(cards).not.toContain('[system.dns]');
-            expect(cards).not.toContain('[system.healthcheck]');
+            expect(cards).not.toContain('[system_dns]');
+            expect(cards).not.toContain('[system_healthcheck]');
         });
 
         test('each line should have ID, name, description, trigger, examples', () => {
@@ -207,7 +207,7 @@ describe('Feature Registry', () => {
         });
 
         test('should have every feature category', () => {
-            const categories = [...new Set(FEATURES.map(f => f.id.split('.')[0]))];
+            const categories = [...new Set(FEATURES.map(f => f.id.split('_')[0]))];
             expect(categories).toContain('ai');
             expect(categories).toContain('document');
             expect(categories).toContain('youtube');

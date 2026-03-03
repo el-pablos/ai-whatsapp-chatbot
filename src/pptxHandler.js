@@ -7,7 +7,7 @@
  *   3. generatePptx() — call Python pptx_generator.py
  *   4. sendPptx() — send .pptx file via Baileys
  *
- * Integrates with toolRegistry as 'presentation.create' tool.
+ * Integrates with toolRegistry as 'presentation_create' tool.
  *
  * @author  Tama El Pablo
  * @version 1.0.0

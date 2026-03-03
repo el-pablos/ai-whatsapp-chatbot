@@ -18,7 +18,7 @@ const FEATURES = [
     //  AI / CHAT
     // ═══════════════════════════════════════════════════
     {
-        id: 'ai.chat',
+        id: 'ai_chat',
         name: 'AI Chat (Persona Tama)',
         module: 'aiHandler',
         description: 'Conversational AI with Tama persona via Copilot API. Handles general chat, questions, reasoning.',
@@ -28,7 +28,7 @@ const FEATURES = [
         examples: ['halo tama', 'jelasin soal quantum computing dong', 'gimana caranya belajar javascript?'],
     },
     {
-        id: 'ai.vision',
+        id: 'ai_vision',
         name: 'Image Analysis (Vision)',
         module: 'aiHandler',
         description: 'Analyze images using Vision API. Supports caption-guided analysis.',
@@ -42,7 +42,7 @@ const FEATURES = [
     //  DOCUMENT PROCESSING
     // ═══════════════════════════════════════════════════
     {
-        id: 'document.extract',
+        id: 'document_extract',
         name: 'Document Reader (70+ formats)',
         module: 'documentHandler',
         description: 'Extract text from documents: PDF, DOCX, PPTX, XLSX, HTML, TXT, MD, code files, ebooks, archives, and more.',
@@ -52,7 +52,7 @@ const FEATURES = [
         examples: ['(kirim file PDF)', '(kirim file DOCX) rangkum ini dong'],
     },
     {
-        id: 'document.summarize',
+        id: 'document_summarize',
         name: 'Document Summarization',
         module: 'documentHandler',
         description: 'AI summarizes extracted document text. Works via caption or reply-to-document.',
@@ -66,7 +66,7 @@ const FEATURES = [
     //  YOUTUBE
     // ═══════════════════════════════════════════════════
     {
-        id: 'youtube.info',
+        id: 'youtube_info',
         name: 'YouTube Video Info',
         module: 'youtubeHandler',
         description: 'Detect YouTube URL, fetch video info, AI analysis of content.',
@@ -76,7 +76,7 @@ const FEATURES = [
         examples: ['https://youtube.com/watch?v=xxx', 'cek video ini dong https://youtu.be/xxx'],
     },
     {
-        id: 'youtube.download_mp3',
+        id: 'youtube_download_mp3',
         name: 'YouTube to MP3',
         module: 'youtubeHandler',
         description: 'Download YouTube video as MP3 audio file.',
@@ -86,7 +86,7 @@ const FEATURES = [
         examples: ['mp3'],
     },
     {
-        id: 'youtube.download_mp4',
+        id: 'youtube_download_mp4',
         name: 'YouTube to MP4',
         module: 'youtubeHandler',
         description: 'Download YouTube video as MP4 video file.',
@@ -100,7 +100,7 @@ const FEATURES = [
     //  WEB SEARCH
     // ═══════════════════════════════════════════════════
     {
-        id: 'web.search',
+        id: 'web_search',
         name: 'Web Search (DuckDuckGo)',
         module: 'webSearchHandler',
         description: 'Search the internet via DuckDuckGo for real-time info. AI auto-triggers via [WEBSEARCH:] marker or user explicit request.',
@@ -114,7 +114,7 @@ const FEATURES = [
     //  WEATHER & EARTHQUAKE
     // ═══════════════════════════════════════════════════
     {
-        id: 'weather.forecast',
+        id: 'weather_forecast',
         name: 'Weather Forecast (BMKG)',
         module: 'weatherHandler',
         description: 'Get weather forecast from BMKG for Indonesian cities.',
@@ -124,7 +124,7 @@ const FEATURES = [
         examples: ['cuaca Jakarta gimana?', 'besok hujan ga ya di Bandung?'],
     },
     {
-        id: 'weather.earthquake',
+        id: 'weather_earthquake',
         name: 'Earthquake Info (BMKG)',
         module: 'weatherHandler',
         description: 'Get latest earthquake data from BMKG Indonesia.',
@@ -138,7 +138,7 @@ const FEATURES = [
     //  LOCATION
     // ═══════════════════════════════════════════════════
     {
-        id: 'location.search',
+        id: 'location_search',
         name: 'Location Search (OpenStreetMap)',
         module: 'locationHandler',
         description: 'Search for places using Nominatim/OpenStreetMap and send location pin.',
@@ -148,7 +148,7 @@ const FEATURES = [
         examples: ['dimana Monas?', 'cari McDonalds terdekat', 'alamat UGM'],
     },
     {
-        id: 'location.reverse',
+        id: 'location_reverse',
         name: 'Reverse Geocoding',
         module: 'locationHandler',
         description: 'When user shares a location pin, identify the address.',
@@ -162,7 +162,7 @@ const FEATURES = [
     //  MEDIA & STICKER
     // ═══════════════════════════════════════════════════
     {
-        id: 'media.analyze_image',
+        id: 'media_analyze_image',
         name: 'Image Analysis',
         module: 'mediaHandler',
         description: 'Download and prepare image for Vision API analysis.',
@@ -172,7 +172,7 @@ const FEATURES = [
         examples: ['(kirim gambar)'],
     },
     {
-        id: 'media.ethnicity',
+        id: 'media_ethnicity',
         name: 'Ethnicity Guess (Fun)',
         module: 'mediaHandler',
         description: 'Fun feature: guess ethnicity from a face photo.',
@@ -182,7 +182,7 @@ const FEATURES = [
         examples: ['/tebaksuku', '(kirim foto) tebak suku'],
     },
     {
-        id: 'sticker.make',
+        id: 'sticker_make',
         name: 'Sticker Maker',
         module: 'stickerHandler',
         description: 'Convert image/video to WhatsApp sticker (WebP format).',
@@ -196,7 +196,7 @@ const FEATURES = [
     //  VOICE
     // ═══════════════════════════════════════════════════
     {
-        id: 'voice.transcribe',
+        id: 'voice_transcribe',
         name: 'Voice Transcription (STT)',
         module: 'voiceHandler',
         description: 'Transcribe voice notes/audio to text using Whisper API, then process with AI.',
@@ -210,7 +210,7 @@ const FEATURES = [
     //  ENTERTAINMENT
     // ═══════════════════════════════════════════════════
     {
-        id: 'mood.reading',
+        id: 'mood_reading',
         name: 'Mood Reading',
         module: 'moodHandler',
         description: 'Analyze user mood/emotions from text and provide empathetic response.',
@@ -220,7 +220,7 @@ const FEATURES = [
         examples: ['/bacamood lagi sedih', 'curhat dong w lagi stress', 'w ngerasa berat banget'],
     },
     {
-        id: 'tarot.reading',
+        id: 'tarot_reading',
         name: 'Tarot Card Reading',
         module: 'tarotHandler',
         description: 'Draw tarot cards and provide AI-interpreted reading. Supports multiple spreads.',
@@ -230,7 +230,7 @@ const FEATURES = [
         examples: ['/tarot1 apakah w bakal sukses?', '/tarot3', 'tarot cinta'],
     },
     {
-        id: 'tarot.yesno',
+        id: 'tarot_yesno',
         name: 'Tarot Yes/No',
         module: 'tarotHandler',
         description: 'Simple yes/no tarot answer for direct questions.',
@@ -244,7 +244,7 @@ const FEATURES = [
     //  CALENDAR
     // ═══════════════════════════════════════════════════
     {
-        id: 'calendar.today',
+        id: 'calendar_today',
         name: 'Today Info',
         module: 'calendarHandler',
         description: 'Get today\'s date, day name, holidays, and special events.',
@@ -254,7 +254,7 @@ const FEATURES = [
         examples: ['/today', 'hari ini tanggal berapa?'],
     },
     {
-        id: 'calendar.holidays',
+        id: 'calendar_holidays',
         name: 'National Holidays',
         module: 'calendarHandler',
         description: 'Show upcoming Indonesian national holidays.',
@@ -264,7 +264,7 @@ const FEATURES = [
         examples: ['/libur', 'libur nasional kapan?'],
     },
     {
-        id: 'calendar.zodiac',
+        id: 'calendar_zodiac',
         name: 'Zodiac Check',
         module: 'calendarHandler',
         description: 'Determine zodiac sign from birth date.',
@@ -274,7 +274,7 @@ const FEATURES = [
         examples: ['/zodiak 1 januari', 'zodiak w apa ya 15 maret?'],
     },
     {
-        id: 'calendar.birthday',
+        id: 'calendar_birthday',
         name: 'Birthday Info',
         module: 'calendarHandler',
         description: 'Calculate age, day born, next birthday, from birth date.',
@@ -284,7 +284,7 @@ const FEATURES = [
         examples: ['/ultah 1 januari 2000'],
     },
     {
-        id: 'calendar.month',
+        id: 'calendar_month',
         name: 'Month Calendar',
         module: 'calendarHandler',
         description: 'Display calendar grid for a given month.',
@@ -298,7 +298,7 @@ const FEATURES = [
     //  FILE CREATION
     // ═══════════════════════════════════════════════════
     {
-        id: 'file.create',
+        id: 'file_create',
         name: 'File Creator',
         module: 'fileCreator',
         description: 'AI creates and sends files (.md, .txt, .csv, .json, .html, etc.) based on user request.',
@@ -312,11 +312,11 @@ const FEATURES = [
     //  PRESENTATION (PPTX)
     // ═══════════════════════════════════════════════════
     {
-        id: 'presentation.create',
+        id: 'presentation_create',
         name: 'PPTX Generator',
         module: 'pptxHandler',
         description: 'Generate and send PowerPoint (.pptx) presentations via Python backend (python-pptx). Supports title/bullets/summary slides with speaker notes.',
-        trigger: 'user asks for pptx/ppt/powerpoint/presentasi/slide file, or AI tool_call presentation.create',
+        trigger: 'user asks for pptx/ppt/powerpoint/presentasi/slide file, or AI tool_call presentation_create',
         input: { title: 'string', subtitle: 'string?', slides: 'SlideSpec[]', notes: 'NotesConfig?' },
         output: { filePath: 'string', fileName: 'string', type: 'pptx' },
         examples: ['bikinin pptx 5 slide soal machine learning', 'bikin presentasi perbandingan SVM vs Naive Bayes', 'kirimin ke aku dalam bentuk file .pptx aja'],
@@ -326,7 +326,7 @@ const FEATURES = [
     //  ADMIN / SYSTEM
     // ═══════════════════════════════════════════════════
     {
-        id: 'admin.backup',
+        id: 'admin_backup',
         name: 'Session Backup',
         module: 'backupHandler',
         description: 'Create and send ZIP backup of auth + database (owner only).',
@@ -336,7 +336,7 @@ const FEATURES = [
         examples: ['/backup'],
     },
     {
-        id: 'admin.stats',
+        id: 'admin_stats',
         name: 'Bot Stats',
         module: 'database',
         description: 'Show bot statistics: total messages, users, chats.',
@@ -346,7 +346,7 @@ const FEATURES = [
         examples: ['/stats'],
     },
     {
-        id: 'admin.clear',
+        id: 'admin_clear',
         name: 'Clear History',
         module: 'database',
         description: 'Clear conversation history for current user.',
@@ -356,7 +356,7 @@ const FEATURES = [
         examples: ['/clear', '/reset'],
     },
     {
-        id: 'system.dns',
+        id: 'system_dns',
         name: 'DNS Updater (Cloudflare)',
         module: 'dnsUpdater',
         description: 'Sync server IP to Cloudflare DNS record on startup.',
@@ -366,7 +366,7 @@ const FEATURES = [
         examples: [],
     },
     {
-        id: 'system.healthcheck',
+        id: 'system_healthcheck',
         name: 'Health Check Server',
         module: 'healthCheck',
         description: 'HTTP endpoints for monitoring: /, /health, /capabilities.',
@@ -376,7 +376,7 @@ const FEATURES = [
         examples: [],
     },
     {
-        id: 'system.bug_report',
+        id: 'system_bug_report',
         name: 'Bug Reporter',
         module: 'bugReporter',
         description: 'Automatically report errors to owner via WhatsApp. Classifies dependency-missing vs real bugs.',

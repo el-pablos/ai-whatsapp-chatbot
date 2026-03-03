@@ -325,7 +325,7 @@ const handleLegacyMarkers = async (text, ctx) => {
     const searchQuery = parseWebSearchMarker(text);
     if (searchQuery) {
         console.log('[Orchestrator] Legacy WEBSEARCH marker:', searchQuery);
-        const result = await executeTool('web.search', { query: searchQuery }, ctx);
+        const result = await executeTool('web_search', { query: searchQuery }, ctx);
         if (result?.success) {
             // Re-send to AI with search results
             const searchContext = `[HASIL PENCARIAN INTERNET untuk "${searchQuery}"]\n${result.results || JSON.stringify(result.raw?.results || [])}\n\n[Jawab pertanyaan user berdasarkan info di atas. Tetap gaya Tama.]`;

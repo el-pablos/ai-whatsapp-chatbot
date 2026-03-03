@@ -2,7 +2,7 @@
  * Tool Registry — every bot capability as an AI-callable tool
  *
  * Each tool has:
- *   - name (dot-separated namespace)
+ *   - name (underscore-separated namespace, e.g. web_search)
  *   - description (AI reads this to decide when to call)
  *   - parameters (JSON schema for structured input)
  *   - execute(params, ctx) — deterministic function that does the work
@@ -71,7 +71,7 @@ const {
 const TOOLS = [
     // ── Document ─────────────────────────────────────────
     {
-        name: 'document.extract_text',
+        name: 'document_extract_text',
         description: 'Extract and analyze text from a document file (PDF, DOCX, PPTX, XLSX, TXT, HTML, ebook, archive, and 70+ more formats). Use when user sends a document or asks about a document.',
         parameters: {
             type: 'object',
@@ -92,7 +92,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'document.get_info',
+        name: 'document_get_info',
         description: 'Get metadata/info about a document without full extraction.',
         parameters: {
             type: 'object',
@@ -107,7 +107,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'document.supported_formats',
+        name: 'document_supported_formats',
         description: 'List all supported document formats the bot can read.',
         parameters: { type: 'object', properties: {}, required: [] },
         execute: async () => ({ success: true, formats: getSupportedFormats() }),
@@ -115,7 +115,7 @@ const TOOLS = [
 
     // ── YouTube ──────────────────────────────────────────
     {
-        name: 'youtube.get_info',
+        name: 'youtube_get_info',
         description: 'Get video info and AI analysis for a YouTube URL. Use when user sends a YouTube link.',
         parameters: {
             type: 'object',
@@ -130,7 +130,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'youtube.download_mp3',
+        name: 'youtube_download_mp3',
         description: 'Download a YouTube video as MP3 audio file. Use when user asks for audio download.',
         parameters: {
             type: 'object',
@@ -146,7 +146,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'youtube.download_mp4',
+        name: 'youtube_download_mp4',
         description: 'Download a YouTube video as MP4 video file. Use when user asks for video download.',
         parameters: {
             type: 'object',
@@ -164,7 +164,7 @@ const TOOLS = [
 
     // ── Web Search ───────────────────────────────────────
     {
-        name: 'web.search',
+        name: 'web_search',
         description: 'Search the internet via DuckDuckGo for real-time or current information. Use when user asks about current events, prices, news, or anything you are not sure about.',
         parameters: {
             type: 'object',
@@ -185,7 +185,7 @@ const TOOLS = [
 
     // ── Weather ──────────────────────────────────────────
     {
-        name: 'weather.forecast',
+        name: 'weather_forecast',
         description: 'Get weather forecast from BMKG for an Indonesian city. Use when user asks about weather.',
         parameters: {
             type: 'object',
@@ -200,7 +200,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'weather.earthquake',
+        name: 'weather_earthquake',
         description: 'Get latest earthquake information from BMKG Indonesia. Use when user asks about earthquakes or gempa.',
         parameters: { type: 'object', properties: {}, required: [] },
         execute: async () => {
@@ -211,7 +211,7 @@ const TOOLS = [
 
     // ── Location ─────────────────────────────────────────
     {
-        name: 'location.search',
+        name: 'location_search',
         description: 'Search for a place/location on OpenStreetMap. Returns coordinates and address. Use when user asks "dimana", "cari tempat", locations.',
         parameters: {
             type: 'object',
@@ -234,7 +234,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'location.reverse',
+        name: 'location_reverse',
         description: 'Get address from coordinates (reverse geocoding). Use when user shares a location pin.',
         parameters: {
             type: 'object',
@@ -252,7 +252,7 @@ const TOOLS = [
 
     // ── Sticker ──────────────────────────────────────────
     {
-        name: 'sticker.make',
+        name: 'sticker_make',
         description: 'Convert an image or short video into a WhatsApp sticker. Use when user says "sticker", "stiker", "bikin stiker".',
         parameters: {
             type: 'object',
@@ -272,7 +272,7 @@ const TOOLS = [
 
     // ── Voice ────────────────────────────────────────────
     {
-        name: 'voice.transcribe',
+        name: 'voice_transcribe',
         description: 'Transcribe a voice note or audio message to text (Speech-to-Text). Use when user sends voice note.',
         parameters: {
             type: 'object',
@@ -291,7 +291,7 @@ const TOOLS = [
 
     // ── Mood ─────────────────────────────────────────────
     {
-        name: 'mood.reading',
+        name: 'mood_reading',
         description: 'Analyze user\'s mood/emotions from their text and provide empathetic response. Use when user is curhat, venting, or expressing feelings.',
         parameters: {
             type: 'object',
@@ -309,7 +309,7 @@ const TOOLS = [
 
     // ── Tarot ────────────────────────────────────────────
     {
-        name: 'tarot.reading',
+        name: 'tarot_reading',
         description: 'Perform a tarot card reading with AI interpretation. Supports spreads: single, threeCard, loveSpread, celticCross.',
         parameters: {
             type: 'object',
@@ -329,7 +329,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'tarot.yesno',
+        name: 'tarot_yesno',
         description: 'Quick tarot yes/no answer for a direct question.',
         parameters: {
             type: 'object',
@@ -346,7 +346,7 @@ const TOOLS = [
 
     // ── Calendar ─────────────────────────────────────────
     {
-        name: 'calendar.today',
+        name: 'calendar_today',
         description: 'Get today\'s date, day name, holiday info.',
         parameters: { type: 'object', properties: {}, required: [] },
         execute: async () => {
@@ -355,7 +355,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'calendar.holidays',
+        name: 'calendar_holidays',
         description: 'List upcoming Indonesian national holidays.',
         parameters: { type: 'object', properties: {}, required: [] },
         execute: async () => {
@@ -364,7 +364,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'calendar.zodiac',
+        name: 'calendar_zodiac',
         description: 'Get zodiac sign from birth date.',
         parameters: {
             type: 'object',
@@ -380,7 +380,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'calendar.birthday',
+        name: 'calendar_birthday',
         description: 'Calculate age, day born, and next birthday from full birth date.',
         parameters: {
             type: 'object',
@@ -397,7 +397,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'calendar.month',
+        name: 'calendar_month',
         description: 'Show calendar grid for a month.',
         parameters: {
             type: 'object',
@@ -414,7 +414,7 @@ const TOOLS = [
 
     // ── File Creator ─────────────────────────────────────
     {
-        name: 'file.create',
+        name: 'file_create',
         description: 'Create a file with given content and filename. Use when user asks to create/export a document, report, or code file.',
         parameters: {
             type: 'object',
@@ -437,7 +437,7 @@ const TOOLS = [
 
     // ── Presentation (PPTX) ───────────────────────────────
     {
-        name: 'presentation.create',
+        name: 'presentation_create',
         description: 'Generate a PowerPoint (.pptx) presentation file with slides. Use when user asks for pptx, ppt, powerpoint, presentasi, or slides. Provide a valid slide spec JSON with title, subtitle, and slides array.',
         parameters: {
             type: 'object',
@@ -482,7 +482,7 @@ const TOOLS = [
 
     // ── Admin ────────────────────────────────────────────
     {
-        name: 'admin.stats',
+        name: 'admin_stats',
         description: 'Get bot statistics (total messages, users, chats). Use when user asks for stats.',
         parameters: { type: 'object', properties: {}, required: [] },
         execute: async () => {
@@ -491,7 +491,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'admin.clear_history',
+        name: 'admin_clear_history',
         description: 'Clear the conversation history for the current user. Use when user says /clear or /reset.',
         parameters: { type: 'object', properties: {}, required: [] },
         execute: async (params, ctx) => {
@@ -500,7 +500,7 @@ const TOOLS = [
         },
     },
     {
-        name: 'admin.backup',
+        name: 'admin_backup',
         description: 'Create and send a backup of bot data (owner only).',
         parameters: { type: 'object', properties: {}, required: [] },
         requiresOwner: true,

@@ -19,12 +19,12 @@ describe('Prompt Composer', () => {
             expect(TOOL_USE_INSTRUCTIONS.length).toBeGreaterThan(100);
         });
 
-        test('should mention web.search', () => {
-            expect(TOOL_USE_INSTRUCTIONS).toContain('web.search');
+        test('should mention web_search', () => {
+            expect(TOOL_USE_INSTRUCTIONS).toContain('web_search');
         });
 
-        test('should mention file.create', () => {
-            expect(TOOL_USE_INSTRUCTIONS).toContain('file.create');
+        test('should mention file_create', () => {
+            expect(TOOL_USE_INSTRUCTIONS).toContain('file_create');
         });
 
         test('should contain tool-use rules', () => {
