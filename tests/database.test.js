@@ -13,6 +13,7 @@
 const {
     isOwner,
     getBotResponseAfter,
+    saveMessage,
     OWNER_NUMBERS,
     RETENTION_MS,
     RETENTION_MONTHS,
@@ -214,6 +215,38 @@ describe('Database Module - User Preferences', () => {
         it('should have retention period of approximately 6 months in days', () => {
             const retentionDays = RETENTION_MS / (24 * 60 * 60 * 1000);
             expect(retentionDays).toBe(180); // 6 * 30
+        });
+
+    });
+
+    // ═══════════════════════════════════════════════════════════
+    // saveMessage - Defensive Validation Tests (no database needed)
+    // ═══════════════════════════════════════════════════════════
+    describe('saveMessage - defensive validation', () => {
+
+        it('should return null when chatId is null', () => {
+            const result = saveMessage({ chatId: null, senderJid: 'test@s.whatsapp.net', role: 'user', content: 'hello' });
+            expect(result).toBeNull();
+        });
+
+        it('should return null when chatId is undefined', () => {
+            const result = saveMessage({ chatId: undefined, senderJid: 'test@s.whatsapp.net', role: 'user', content: 'hello' });
+            expect(result).toBeNull();
+        });
+
+        it('should return null when chatId is empty string', () => {
+            const result = saveMessage({ chatId: '', senderJid: 'test@s.whatsapp.net', role: 'user', content: 'hello' });
+            expect(result).toBeNull();
+        });
+
+        it('should return null when role is null', () => {
+            const result = saveMessage({ chatId: 'test@s.whatsapp.net', senderJid: 'test@s.whatsapp.net', role: null, content: 'hello' });
+            expect(result).toBeNull();
+        });
+
+        it('should return null when role is undefined', () => {
+            const result = saveMessage({ chatId: 'test@s.whatsapp.net', senderJid: 'test@s.whatsapp.net', role: undefined, content: 'hello' });
+            expect(result).toBeNull();
         });
 
     });

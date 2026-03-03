@@ -269,6 +269,55 @@ describe('AI Orchestrator', () => {
             expect(result.text).toContain('halo juga bro!');
         });
 
+        test('should call saveMessage with correct object format', async () => {
+            const { saveMessage } = require('../src/database');
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [{ message: { content: 'response text' } }],
+                },
+            });
+
+            await orchestrate(makeNormalized({ text: 'hello world', senderId: '628111@s.whatsapp.net', pushName: 'Budi' }));
+
+            // Should be called twice: once for user, once for assistant
+            expect(saveMessage).toHaveBeenCalledTimes(2);
+
+            // User message: must use object format with correct fields
+            expect(saveMessage).toHaveBeenCalledWith(expect.objectContaining({
+                chatId: '628999@s.whatsapp.net',
+                senderJid: '628111@s.whatsapp.net',
+                senderName: 'Budi',
+                role: 'user',
+                content: 'hello world',
+            }));
+
+            // Assistant message: must use object format
+            expect(saveMessage).toHaveBeenCalledWith(expect.objectContaining({
+                chatId: '628999@s.whatsapp.net',
+                role: 'assistant',
+                content: 'response text',
+            }));
+        });
+
+        test('should NOT call saveMessage with positional args (regression)', async () => {
+            const { saveMessage } = require('../src/database');
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [{ message: { content: 'test response' } }],
+                },
+            });
+
+            await orchestrate(makeNormalized());
+
+            // Ensure saveMessage is called with objects, not strings
+            for (const call of saveMessage.mock.calls) {
+                expect(typeof call[0]).toBe('object');
+                expect(call[0]).toHaveProperty('chatId');
+                expect(call[0]).toHaveProperty('role');
+                expect(call[0]).toHaveProperty('content');
+            }
+        });
+
         test('should handle TOKEN_EXPIRED error', async () => {
             axios.post.mockRejectedValueOnce({
                 response: { status: 401 },
@@ -393,6 +442,40 @@ describe('AI Orchestrator', () => {
             const lastMsg = body.messages[body.messages.length - 1];
             expect(Array.isArray(lastMsg.content)).toBe(true);
             expect(lastMsg.content[0].type).toBe('image_url');
+        });
+
+        test('should call saveMessage with correct object format in vision', async () => {
+            const { saveMessage } = require('../src/database');
+            axios.post.mockResolvedValueOnce({
+                data: {
+                    choices: [{ message: { content: 'gambar bagus bro' } }],
+                },
+            });
+
+            await orchestrateVision('base64data', 'image/jpeg', 'nice pic', '628777@s.whatsapp.net');
+
+            expect(saveMessage).toHaveBeenCalledTimes(2);
+
+            // User message
+            expect(saveMessage).toHaveBeenCalledWith(expect.objectContaining({
+                chatId: '628777@s.whatsapp.net',
+                role: 'user',
+                content: 'nice pic',
+            }));
+
+            // Assistant message
+            expect(saveMessage).toHaveBeenCalledWith(expect.objectContaining({
+                chatId: '628777@s.whatsapp.net',
+                role: 'assistant',
+                content: 'gambar bagus bro',
+            }));
+
+            // Must NOT be called with positional args
+            for (const call of saveMessage.mock.calls) {
+                expect(typeof call[0]).toBe('object');
+                expect(call[0]).toHaveProperty('chatId');
+                expect(call[0]).toHaveProperty('role');
+            }
         });
 
         test('should handle vision API error', async () => {

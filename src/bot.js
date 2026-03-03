@@ -479,7 +479,11 @@ const handleMessagesUpsert = async ({ messages, type }) => {
         try {
             await processMessage(msg);
         } catch (error) {
-            console.error('[Bot] Error processing message:', error.message);
+            const sender = msg?.key?.remoteJid || 'unknown';
+            const msgId = msg?.key?.id || 'unknown';
+            const pushName = msg?.pushName || 'unknown';
+            console.error(`[Bot] processMessage ERROR | sender=${sender} msgId=${msgId} pushName=${pushName} err=${error.message}`);
+            if (error.stack) console.error(`[Bot] Stack trace:\n${error.stack}`);
         }
     }
 };

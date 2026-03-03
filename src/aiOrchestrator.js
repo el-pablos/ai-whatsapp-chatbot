@@ -93,21 +93,24 @@ const callCopilotAPI = async (messages, tools = null, retryCount = 0) => {
         );
         return res.data;
     } catch (err) {
-        console.error('[Orchestrator] API error:', err.message);
+        const status = err.response?.status;
+        const statusText = err.response?.statusText || '';
+        const errCode = err.code || '';
+        const responseBody = err.response?.data ? JSON.stringify(err.response.data).substring(0, 300) : '';
+        console.error(`[Orchestrator] API error | status=${status || 'N/A'} statusText=${statusText} code=${errCode} retry=${retryCount}/${MAX_RETRIES} msg=${err.message}${responseBody ? ` body=${responseBody}` : ''}`);
 
         // Auth / quota errors — no retry
-        const status = err.response?.status;
         if (status === 401) throw new Error('TOKEN_EXPIRED');
         if (status === 402) throw new Error('QUOTA_EXHAUSTED');
         if (status === 413) throw new Error('PAYLOAD_TOO_LARGE');
 
         // Retryable errors
         if (retryCount < MAX_RETRIES) {
-            const retryable = ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(err.code) ||
+            const retryable = ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(errCode) ||
                               (status && status >= 500) || status === 429;
             if (retryable) {
                 const delay = 2000 * (retryCount + 1);
-                console.log(`[Orchestrator] Retry ${retryCount + 1}/${MAX_RETRIES} in ${delay}ms`);
+                console.log(`[Orchestrator] Retrying API call ${retryCount + 1}/${MAX_RETRIES} in ${delay}ms (reason: ${errCode || `HTTP ${status}`})`);
                 await new Promise(r => setTimeout(r, delay));
                 return callCopilotAPI(messages, tools, retryCount + 1);
             }
@@ -182,7 +185,7 @@ const orchestrate = async (normalizedMsg, ctx = {}) => {
             mediaCtx.mediaMimetype = att.mimetype || download.mimetype;
             mediaCtx.mediaFilename = att.fileName || download.filename || 'file';
         } catch (err) {
-            console.error('[Orchestrator] Failed to download media:', err.message);
+            console.error(`[Orchestrator] Failed to download media | chatId=${chatId} senderId=${senderId} mimetype=${normalizedMsg.attachments[0]?.mimetype || 'unknown'} err=${err.message}`);
         }
     }
 
@@ -254,7 +257,14 @@ const orchestrate = async (normalizedMsg, ctx = {}) => {
         }
 
     } catch (err) {
-        console.error('[Orchestrator] Error:', err.message);
+        const errCategory = err.message === 'TOKEN_EXPIRED' ? 'AUTH'
+            : err.message === 'QUOTA_EXHAUSTED' ? 'QUOTA'
+            : err.message === 'PAYLOAD_TOO_LARGE' ? 'PAYLOAD'
+            : 'UNKNOWN';
+        console.error(`[Orchestrator] orchestrate() ERROR | category=${errCategory} chatId=${chatId} senderId=${senderId} pushName=${pushName} isGroup=${isGroup} textLen=${(text || '').length} iter=${iteration} err=${err.message}`);
+        if (errCategory === 'UNKNOWN' && err.stack) {
+            console.error(`[Orchestrator] Stack trace:\n${err.stack}`);
+        }
 
         if (err.message === 'TOKEN_EXPIRED') {
             return { text: 'duh AI nya lagi error bro — token expired, owner harus refresh token Copilot API dulu 🔑' };
@@ -303,10 +313,10 @@ const orchestrate = async (normalizedMsg, ctx = {}) => {
 
     // ── 11. Save to conversation history ──────────────────
     if (text) {
-        saveMessage(chatId, 'user', text);
+        saveMessage({ chatId, senderJid: senderId, senderName: pushName, role: 'user', content: text });
     }
     if (response.text) {
-        saveMessage(chatId, 'assistant', response.text);
+        saveMessage({ chatId, senderJid: 'assistant', senderName: 'Tama AI', role: 'assistant', content: response.text });
     }
 
     return response;
@@ -384,11 +394,13 @@ const orchestrateVision = async (base64, mimetype, caption, chatId, profile = {}
     try {
         const data = await callCopilotAPI(messages, null);
         const text = data.choices?.[0]?.message?.content || 'duh ga bisa liat gambar nya nih 😓';
-        saveMessage(chatId, 'user', caption || '[gambar]');
-        saveMessage(chatId, 'assistant', text);
+        saveMessage({ chatId, senderJid: chatId, role: 'user', content: caption || '[gambar]' });
+        saveMessage({ chatId, senderJid: 'assistant', senderName: 'Tama AI', role: 'assistant', content: text });
         return { text: smartTruncate(text) };
     } catch (err) {
-        console.error('[Orchestrator] Vision error:', err.message);
+        const status = err.response?.status || 'N/A';
+        console.error(`[Orchestrator] Vision ERROR | chatId=${chatId} status=${status} caption=${(caption || '').substring(0, 50)} mimetype=${mimetype} err=${err.message}`);
+        if (err.stack) console.error(`[Orchestrator] Vision stack:\n${err.stack}`);
         return { text: 'aduh error pas liat gambar 😭 coba kirim ulang bro' };
     }
 };

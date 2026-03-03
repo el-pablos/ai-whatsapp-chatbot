@@ -224,7 +224,17 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
         }
 
     } catch (err) {
-        console.error('[IntentRouter] Routing error:', err.message);
+        const errDetail = {
+            chatId,
+            pushName: normalizedMsg.pushName,
+            senderId: normalizedMsg.senderId,
+            isGroup: normalizedMsg.isGroup,
+            messageType: normalizedMsg.messageType,
+            textPreview: (normalizedMsg.text || '').substring(0, 80),
+            error: err.message,
+            stack: err.stack ? err.stack.split('\n').slice(0, 5).join('\n') : 'N/A',
+        };
+        console.error(`[IntentRouter] Routing ERROR |`, JSON.stringify(errDetail));
         await reportBugToOwner(sock, chatId, normalizedMsg.pushName, err, 'IntentRouter', ctx.rawMsg);
         await sock.sendMessage(chatId, { text: 'duh error jir 😓 bntar ya' }, { quoted: ctx.rawMsg });
     }

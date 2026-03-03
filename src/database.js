@@ -124,6 +124,20 @@ const saveMessage = ({
     mediaType = null,
     mediaCaption = null
 }) => {
+    // Defensive validation - prevent NOT NULL constraint errors
+    if (!chatId) {
+        console.error('[Database] saveMessage REJECTED: chatId is null/undefined', {
+            senderJid, senderName, role, content: (content || '').substring(0, 100),
+        });
+        return null;
+    }
+    if (!role) {
+        console.error('[Database] saveMessage REJECTED: role is null/undefined', {
+            chatId, senderJid, senderName, content: (content || '').substring(0, 100),
+        });
+        return null;
+    }
+
     const database = initDatabase();
     
     const stmt = database.prepare(`
