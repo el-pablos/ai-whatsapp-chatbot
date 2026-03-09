@@ -1032,6 +1032,74 @@ const TOOLS = [
             return { success: true, message: listScheduledMessages(ctx.senderId || ctx.chatId) };
         },
     },
+
+    // ── Allowlist Management (owner only) ─────────────────
+    {
+        name: 'allowlist_add',
+        description: 'Add a phone number to the bot allowlist. Owner only.',
+        requiresOwner: true,
+        parameters: {
+            type: 'object',
+            properties: {
+                phone_number: { type: 'string', description: 'Phone number to allow (format: 628xxx)' },
+                display_name: { type: 'string', description: 'Display name (optional)' },
+            },
+            required: ['phone_number'],
+        },
+        execute: async (params, ctx) => {
+            const { addNumber } = require('./allowlistManager');
+            const r = addNumber(params.phone_number, params.display_name || null, ctx.senderId || 'owner', null);
+            if (!r) return { success: false, error: 'Format nomor ga valid' };
+            return { success: true, message: `${r.phone_number} ditambahin ke allowlist` };
+        },
+    },
+    {
+        name: 'allowlist_remove',
+        description: 'Remove a phone number from the bot allowlist. Owner only.',
+        requiresOwner: true,
+        parameters: {
+            type: 'object',
+            properties: {
+                phone_number: { type: 'string', description: 'Phone number to remove' },
+            },
+            required: ['phone_number'],
+        },
+        execute: async (params, ctx) => {
+            const { removeNumber } = require('./allowlistManager');
+            const ok = removeNumber(params.phone_number);
+            return { success: ok, message: ok ? 'Dihapus dari allowlist' : 'Nomor ga ketemu' };
+        },
+    },
+    {
+        name: 'allowlist_view',
+        description: 'View all allowlist entries. Owner only.',
+        requiresOwner: true,
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            const { getAll, getStats } = require('./allowlistManager');
+            const entries = getAll();
+            const stats = getStats();
+            return { success: true, entries, stats };
+        },
+    },
+    {
+        name: 'allowlist_toggle',
+        description: 'Toggle a phone number active/inactive in allowlist. Owner only.',
+        requiresOwner: true,
+        parameters: {
+            type: 'object',
+            properties: {
+                phone_number: { type: 'string', description: 'Phone number to toggle' },
+                is_active: { type: 'boolean', description: 'true to activate, false to deactivate' },
+            },
+            required: ['phone_number', 'is_active'],
+        },
+        execute: async (params, ctx) => {
+            const { toggleNumber } = require('./allowlistManager');
+            const ok = toggleNumber(params.phone_number, params.is_active);
+            return { success: ok, message: ok ? `Nomor ${params.is_active ? 'diaktifkan' : 'dinonaktifkan'}` : 'Nomor ga ketemu' };
+        },
+    },
 ];
 
 /**
@@ -1083,6 +1151,18 @@ const executeTool = async (toolName, params, ctx) => {
     if (!tool) {
         return { success: false, error: `Unknown tool: ${toolName}` };
     }
+    // Owner-only guard
+    if (tool.requiresOwner && !(ctx && ctx.isOwner)) {
+        return { success: false, error: 'Hanya owner yang bisa pake tool ini' };
+    }
+    // Feature toggle guard
+    try {
+        const { isFeatureEnabled } = require('./database');
+        if (toolName.startsWith('allowlist_')) { /* allowlist always available */ }
+        else if (!isFeatureEnabled(toolName)) {
+            return { success: false, error: `Fitur ${toolName} sedang dinonaktifkan oleh admin` };
+        }
+    } catch (e) { /* toggle check failure = allow */ }
     try {
         const result = await tool.execute(params || {}, ctx || {});
         return result;
