@@ -621,6 +621,18 @@ const FEATURES = [
         output: { success: 'boolean', notes: 'string' },
         examples: ['/videonotes https://youtube.com/watch?v=abc', '/vnotes https://youtu.be/xyz', 'buatin notes video ini'],
     },
+
+    // ── V5: Smart Reasoning ────────────────────────────────────
+    {
+        id: 'smart_reasoning',
+        name: 'Smart Reasoning (Chain-of-Thought)',
+        module: 'chainOfThought',
+        description: 'Step-by-step reasoning engine for complex questions — breaks down multi-part problems, analyzes from multiple angles, and synthesizes conclusions with confidence scoring.',
+        trigger: '/reasoning [question] or /think [question] or /mikir [question]',
+        input: { query: 'string', context: 'string' },
+        output: { steps: 'string[]', conclusion: 'string', confidence: 'number' },
+        examples: ['/reasoning jelaskan dampak AI terhadap pasar kerja', '/think bandingkan monolith vs microservices', '/mikir kenapa inflasi naik terus?'],
+    },
 ];
 
 /**
