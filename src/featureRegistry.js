@@ -633,6 +633,18 @@ const FEATURES = [
         output: { steps: 'string[]', conclusion: 'string', confidence: 'number' },
         examples: ['/reasoning jelaskan dampak AI terhadap pasar kerja', '/think bandingkan monolith vs microservices', '/mikir kenapa inflasi naik terus?'],
     },
+
+    // ── V5: RAG Document Intelligence ──────────────────────────
+    {
+        id: 'rag_document',
+        name: 'RAG Document Intelligence',
+        module: 'ragPipeline',
+        description: 'Ingest documents into vector store, then answer questions using retrieved context. Supports text, markdown, and conversation history with citation tracking.',
+        trigger: '/rag [query] or /dokumen [query] or /ragstatus',
+        input: { query: 'string', show_sources: 'boolean' },
+        output: { answer: 'string', citations: 'object[]', stats: 'object' },
+        examples: ['/rag apa isi dokumen tentang kebijakan cuti?', '/dokumen rangkum poin penting dari file terakhir', '/ragstatus'],
+    },
 ];
 
 /**
