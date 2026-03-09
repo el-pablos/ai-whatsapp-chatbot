@@ -13,6 +13,7 @@ auth_info_baileys/
 
 # Database (contains user data!)
 data/
+data/vectors/
 *.db
 *.db-journal
 *.db-shm
