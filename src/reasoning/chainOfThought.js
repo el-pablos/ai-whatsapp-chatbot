@@ -93,52 +93,69 @@ const performReasoning = async (query, context = {}) => {
 
     const prompt = buildReasoningPrompt(query, context);
 
-    try {
-        const response = await axios.post(
-            `${COPILOT_API_URL}/v1/chat/completions`,
-            {
-                model: COPILOT_API_MODEL,
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.3
-            },
-            {
-                headers: { 'Content-Type': 'application/json' },
-                timeout: REASONING_TIMEOUT
+    const MAX_RETRIES = 1;
+    let lastError = '';
+
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        try {
+            const response = await axios.post(
+                `${COPILOT_API_URL}/v1/chat/completions`,
+                {
+                    model: COPILOT_API_MODEL,
+                    messages: [{ role: 'user', content: prompt }],
+                    temperature: 0.3
+                },
+                {
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: REASONING_TIMEOUT
+                }
+            );
+
+            const rawResponse = response.data?.choices?.[0]?.message?.content || '';
+
+            if (!rawResponse) {
+                lastError = 'Empty AI response';
+                if (attempt < MAX_RETRIES) continue;
+                return {
+                    steps: [],
+                    conclusion: '',
+                    confidence: 0,
+                    rawResponse: '',
+                    success: false,
+                    error: lastError
+                };
             }
-        );
 
-        const rawResponse = response.data?.choices?.[0]?.message?.content || '';
+            // Parse the response
+            const parsed = parseReasoningResponse(rawResponse);
 
-        if (!rawResponse) {
             return {
-                steps: [],
-                conclusion: '',
-                confidence: 0,
-                rawResponse: '',
-                success: false,
-                error: 'Empty AI response'
+                ...parsed,
+                rawResponse,
+                success: true
             };
+        } catch (err) {
+            lastError = err.message;
+            console.error(`[ChainOfThought] Reasoning attempt ${attempt + 1} failed:`, err.message);
+
+            // Don't retry on non-retryable errors
+            const status = err.response?.status;
+            if (status === 401 || status === 402 || status === 413) break;
+
+            if (attempt < MAX_RETRIES) {
+                await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+            }
         }
-
-        // Parse the response
-        const parsed = parseReasoningResponse(rawResponse);
-
-        return {
-            ...parsed,
-            rawResponse,
-            success: true
-        };
-    } catch (err) {
-        console.error('[ChainOfThought] Reasoning failed:', err.message);
-        return {
-            steps: [],
-            conclusion: '',
-            confidence: 0,
-            rawResponse: '',
-            success: false,
-            error: err.message
-        };
     }
+
+    return {
+        steps: [],
+        conclusion: '',
+        confidence: 0,
+        rawResponse: '',
+        success: false,
+        error: lastError
+    };
 };
 
 /**
