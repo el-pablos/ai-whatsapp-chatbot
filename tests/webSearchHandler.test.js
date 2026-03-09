@@ -17,6 +17,7 @@ const {
     parseWebSearchMarker,
     isInfoQuery,
     axiosGetWithRetry,
+    quickSearch,
     SEARCH_TIMEOUT,
     SEARCH_MAX_RETRIES,
     SEARCH_BACKOFF_BASE
@@ -404,4 +405,22 @@ describe('Web Search - Timeout & Retry Config', () => {
             expect(SEARCH_MAX_RETRIES).toBe(2);
         }
     });
+});
+
+// quickSearch tests
+describe('quickSearch', () => {
+    it('should be a function', () => {
+        expect(typeof quickSearch).toBe('function');
+    });
+
+    it('should return expected structure', async () => {
+        // quickSearch calls webSearch internally which hits real API
+        // Just verify the function returns proper shape on error
+        const result = await quickSearch('test_query_nonexistent_12345', 2000);
+        expect(result).toHaveProperty('snippets');
+        expect(result).toHaveProperty('urls');
+        expect(result).toHaveProperty('source');
+        expect(Array.isArray(result.snippets)).toBe(true);
+        expect(Array.isArray(result.urls)).toBe(true);
+    }, 10000);
 });
