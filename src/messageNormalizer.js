@@ -170,6 +170,30 @@ const extractQuoted = (message) => {
 };
 
 // ═══════════════════════════════════════════════════════════
+// VCARD PARSER
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Parse vCard string ke object
+ * @param {string} vcard — raw vCard string
+ * @param {string} displayName — WhatsApp display name
+ * @returns {{ name: string, phone: string|null, email: string|null }}
+ */
+const parseVCard = (vcard, displayName) => {
+    if (!vcard) return { name: displayName || 'Unknown', phone: null, email: null };
+
+    const nameMatch = vcard.match(/FN[;:](.+)/i);
+    const phoneMatch = vcard.match(/TEL[^:]*:([\d+\s-]+)/i);
+    const emailMatch = vcard.match(/EMAIL[^:]*:(.+)/i);
+
+    return {
+        name: nameMatch ? nameMatch[1].trim() : (displayName || 'Unknown'),
+        phone: phoneMatch ? phoneMatch[1].trim() : null,
+        email: emailMatch ? emailMatch[1].trim() : null,
+    };
+};
+
+// ═══════════════════════════════════════════════════════════
 // MAIN NORMALIZER
 // ═══════════════════════════════════════════════════════════
 
@@ -206,6 +230,16 @@ const normalizeMessage = (msg) => {
         };
     }
 
+    // Contact / vCard special case
+    let contact = null;
+    if (message?.contactMessage) {
+        contact = parseVCard(message.contactMessage.vcard, message.contactMessage.displayName);
+    } else if (message?.contactsArrayMessage) {
+        contact = (message.contactsArrayMessage.contacts || []).map(c =>
+            parseVCard(c.vcard, c.displayName)
+        );
+    }
+
     return {
         chatId,
         senderId,
@@ -217,6 +251,7 @@ const normalizeMessage = (msg) => {
         attachments,
         quoted,
         location,
+        contact,
         messageId: msg.key?.id || '',
         timestamp: msg.messageTimestamp
             ? (typeof msg.messageTimestamp === 'number'
@@ -234,4 +269,5 @@ module.exports = {
     extractText,
     extractAttachments,
     extractQuoted,
+    parseVCard,
 };
