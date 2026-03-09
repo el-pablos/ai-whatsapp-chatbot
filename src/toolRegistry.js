@@ -1156,6 +1156,29 @@ const TOOLS = [
             return result;
         },
     },
+
+    // ── V5: Smart Reasoning ────────────────────────────────────
+    {
+        name: 'smart_reasoning',
+        description: 'Perform chain-of-thought reasoning on complex questions. Breaks down multi-step problems into logical steps. Use for analytical, comparative, or multi-part questions.',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'The complex question or problem to reason about' },
+                context: { type: 'string', description: 'Optional additional context to help reasoning' },
+            },
+            required: ['query'],
+        },
+        execute: async (params) => {
+            const { performReasoning } = require('./reasoning/chainOfThought');
+            const { formatForWhatsApp } = require('./reasoning/reasoningParser');
+            const result = await performReasoning(params.query, {
+                additionalContext: params.context || ''
+            });
+            if (!result.success) return { text: result.error || 'reasoning gagal' };
+            return { text: formatForWhatsApp(result) };
+        },
+    },
 ];
 
 /**
