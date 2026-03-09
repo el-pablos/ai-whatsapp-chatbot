@@ -25,9 +25,9 @@ const cleanTranscript = (raw) => {
     return raw
         .replace(/\r\n/g, '\n')       // normalize newlines
         .replace(/\t/g, ' ')          // tabs to spaces
+        .replace(/\[.*?\]/g, '')       // remove [Music], [Applause] etc
         .replace(/ {2,}/g, ' ')        // collapse multiple spaces
         .replace(/\n{3,}/g, '\n\n')    // max 2 consecutive newlines
-        .replace(/\[.*?\]/g, '')       // remove [Music], [Applause] etc
         .trim();
 };
 
