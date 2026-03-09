@@ -28,21 +28,41 @@ const generateVideoNotes = async (videoData = {}) => {
     const { title = '', description = '', transcript = '', duration = 0, channel = '', url = '' } = videoData;
 
     // 1. Extract timestamps from description
-    let timestamps = extractTimestamps(description);
+    let timestamps = [];
+    try {
+        timestamps = extractTimestamps(description);
+    } catch (err) {
+        console.error('[VideoNoteGenerator] Timestamp extraction failed:', err.message);
+    }
 
     // 2. If no timestamps in description, try AI generation
     if (timestamps.length === 0 && transcript.length > 100) {
-        timestamps = await generateAITimestamps(transcript, title, duration);
+        try {
+            timestamps = await generateAITimestamps(transcript, title, duration);
+        } catch (err) {
+            console.error('[VideoNoteGenerator] AI timestamp generation failed:', err.message);
+        }
     }
 
     // 3. Generate chapters
     const chapters = generateChaptersSummary(timestamps, duration);
 
-    // 4. Generate AI summary
-    const summary = await generateAISummary(title, transcript, description, duration);
+    // 4. Generate AI summary (graceful fallback)
+    let summary = '';
+    try {
+        summary = await generateAISummary(title, transcript, description, duration);
+    } catch (err) {
+        console.error('[VideoNoteGenerator] Summary failed:', err.message);
+        summary = transcript ? transcript.substring(0, 500) + '...' : 'Summary tidak tersedia.';
+    }
 
-    // 5. Extract key points
-    const keyPoints = await extractKeyPoints(title, transcript);
+    // 5. Extract key points (graceful fallback)
+    let keyPoints = [];
+    try {
+        keyPoints = await extractKeyPoints(title, transcript);
+    } catch (err) {
+        console.error('[VideoNoteGenerator] Key points failed:', err.message);
+    }
 
     // 6. Build full notes
     const fullNotes = formatFullNotes({
