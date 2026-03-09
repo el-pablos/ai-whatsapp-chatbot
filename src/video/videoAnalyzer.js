@@ -22,6 +22,31 @@ const path = require('path');
 const execFileAsync = promisify(execFile);
 const TEMP_DIR = path.join(process.cwd(), 'downloads');
 
+// ═══════════════════════════════════════════════════════════
+//  IN-MEMORY CACHE — avoid re-processing same videos
+// ═══════════════════════════════════════════════════════════
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const MAX_CACHE_SIZE = 50;
+const _notesCache = new Map();
+
+const getCachedNotes = (videoId) => {
+    const entry = _notesCache.get(videoId);
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > CACHE_TTL) {
+        _notesCache.delete(videoId);
+        return null;
+    }
+    return entry.data;
+};
+
+const setCachedNotes = (videoId, data) => {
+    if (_notesCache.size >= MAX_CACHE_SIZE) {
+        const oldest = [..._notesCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp)[0];
+        if (oldest) _notesCache.delete(oldest[0]);
+    }
+    _notesCache.set(videoId, { data, timestamp: Date.now() });
+};
+
 /**
  * Analyze a YouTube video and generate notes
  *
@@ -40,6 +65,11 @@ const analyzeVideo = async (url, options = {}) => {
         if (!detected) {
             return { success: false, notes: '', error: 'URL bukan YouTube yang valid' };
         }
+
+        // 1b. Check cache
+        const cacheKey = `${detected.videoId}_${chaptersOnly ? 'ch' : 'full'}`;
+        const cached = getCachedNotes(cacheKey);
+        if (cached) return cached;
 
         // 2. Get video info
         const videoInfo = await getVideoMetadata(detected.videoId);
@@ -78,7 +108,9 @@ const analyzeVideo = async (url, options = {}) => {
             if (transcript.length > 3000) output += '\n...(terpotong)';
         }
 
-        return { success: true, notes: output };
+        const finalResult = { success: true, notes: output };
+        setCachedNotes(cacheKey, finalResult);
+        return finalResult;
     } catch (err) {
         console.error('[VideoAnalyzer] Error:', err.message);
         return { success: false, notes: '', error: err.message };
@@ -170,4 +202,7 @@ module.exports = {
     analyzeVideo,
     getVideoMetadata,
     fetchTranscript,
+    getCachedNotes,
+    setCachedNotes,
+    _notesCache,
 };
