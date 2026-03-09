@@ -11,8 +11,10 @@
 
 const { formatTimestamp } = require('./timestampExtractor');
 
+const WA_SAFE_LIMIT = 4000;
+
 /**
- * Format video notes for WhatsApp
+ * Format video notes for WhatsApp, auto-truncate if too long
  *
  * @param {object} data
  * @param {string} data.title
@@ -60,7 +62,11 @@ const formatForWhatsApp = (data = {}) => {
         lines.push('');
     }
 
-    return lines.join('\n');
+    let result = lines.join('\n');
+    if (result.length > WA_SAFE_LIMIT) {
+        result = result.substring(0, WA_SAFE_LIMIT - 30) + '\n\n...(notes terpotong, terlalu panjang)';
+    }
+    return result;
 };
 
 /**
