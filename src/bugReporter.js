@@ -8,7 +8,7 @@
  */
 
 // Owner's WhatsApp JID for bug reports
-const OWNER_JID = `${process.env.BUG_REPORT_OWNER || '6285817378442'}@s.whatsapp.net`;
+const OWNER_JID = `${process.env.BUG_REPORT_OWNER || '6282210819939'}@s.whatsapp.net`;
 
 // Cooldown tracking to avoid spam (same error within 5 minutes)
 const reportedBugs = new Map();

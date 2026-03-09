@@ -22,7 +22,7 @@ const COPILOT_API_URL = process.env.COPILOT_API_URL || 'http://localhost:4141';
 const COPILOT_API_MODEL = process.env.COPILOT_API_MODEL || 'claude-sonnet-4-20250514';
 
 // Owner phone numbers for recognition (kept for backward compat, uses helper internally)
-const OWNER_NUMBERS = ['6282210819939', '082210819939', '6285817378442', '085817378442'];
+const OWNER_NUMBERS = ['6282210819939', '082210819939'];
 
 /**
  * Check if phone number belongs to owner

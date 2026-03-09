@@ -6,7 +6,7 @@ services:
     network_mode: host
     volumes:
       - ./data:/app/data
-      - ./auth_info_multi:/app/auth_info_multi
+      - ./auth_info_baileys:/app/auth_info_baileys
       - ./.env:/app/.env:ro
     environment:
       - NODE_ENV=production
