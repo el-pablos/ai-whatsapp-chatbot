@@ -12,15 +12,24 @@
 // ═══════════════════════════════════════════════════════════
 
 const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+const MAX_CACHE_SIZE = 200;
 const verificationCache = new Map();
 
 /**
- * Clean expired cache entries
+ * Clean expired cache entries and enforce max size
  */
 const cleanCache = () => {
     const now = Date.now();
     for (const [key, entry] of verificationCache) {
         if (now - entry.timestamp > CACHE_TTL) {
+            verificationCache.delete(key);
+        }
+    }
+    // Evict oldest if over max size
+    if (verificationCache.size > MAX_CACHE_SIZE) {
+        const entries = [...verificationCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+        const toRemove = entries.slice(0, verificationCache.size - MAX_CACHE_SIZE);
+        for (const [key] of toRemove) {
             verificationCache.delete(key);
         }
     }
@@ -271,4 +280,5 @@ module.exports = {
     SKIP_QUERY_PATTERNS,
     SKIP_RESPONSE_PATTERNS,
     CACHE_TTL,
+    MAX_CACHE_SIZE,
 };
