@@ -39,6 +39,8 @@ const { parseImagineCommand, generateImage, downloadImageBuffer, isImageGenAvail
 const { parseScheduleCommand, scheduleMessage, listScheduledMessages } = require('./scheduledMessageHandler');
 const { listReminders } = require('./reminderHandler');
 const { listNotes, listTodos } = require('./noteHandler');
+const { addNumber: allowAdd, removeNumber: allowRemove, toggleNumber: allowToggle, getAll: getAllAllow, getStats: getAllowStats } = require('./allowlistManager');
+const { normalizePhoneNumber, isFeatureEnabled, setFeatureToggle, getAllFeatureToggles } = require('./database');
 
 // ═══════════════════════════════════════════════════════════
 //  FAST-PATH COMMANDS (no AI needed)
@@ -197,6 +199,76 @@ const PREFIX_COMMANDS = {
     '/todo': async (args, ctx) => {
         if (!args || args.toLowerCase() === 'list') return { text: listTodos(ctx.senderId || ctx.chatId) };
         return null;
+    },
+    // ── ALLOWLIST COMMANDS (owner only) ──
+    '/allow': async (args, ctx) => {
+        if (!ctx.isOwner) return null;
+        if (!args) return { text: 'format: /allow 628xxx [nama]\ncontoh: /allow 6281234567890 si Budi' };
+        const parts = args.split(/\s+/);
+        const phone = parts[0];
+        const name = parts.slice(1).join(' ') || null;
+        const result = allowAdd(phone, name, ctx.senderId || 'owner', null);
+        if (!result) return { text: 'format nomor ga valid bro' };
+        return { text: `✅ ${result.phone_number}${result.display_name ? ` (${result.display_name})` : ''} ditambahin ke allowlist` };
+    },
+    '/unallow': async (args, ctx) => {
+        if (!ctx.isOwner) return null;
+        if (!args) return { text: 'format: /unallow 628xxx' };
+        const removed = allowRemove(args.trim());
+        return { text: removed ? `✅ dihapus dari allowlist` : `ga nemu nomor itu di allowlist` };
+    },
+    '/allowlist': async (_args, ctx) => {
+        if (!ctx.isOwner) return null;
+        const entries = getAllAllow();
+        if (entries.length === 0) return { text: '📋 Allowlist kosong — semua nomor bisa akses bot.' };
+        const stats = getAllowStats();
+        const lines = entries.map((e, i) => {
+            const status = e.is_active ? 'aktif ✅' : 'nonaktif ❌';
+            const name = e.display_name ? ` — ${e.display_name}` : '';
+            return `${i + 1}. ${e.phone_number}${name} (${status})`;
+        });
+        return { text: `📋 *Allowlist*\n${lines.join('\n')}\n\nTotal: ${stats.total} nomor (${stats.active} aktif, ${stats.inactive} nonaktif)` };
+    },
+    '/allowon': async (args, ctx) => {
+        if (!ctx.isOwner) return null;
+        if (!args) return { text: 'format: /allowon 628xxx' };
+        const ok = allowToggle(args.trim(), true);
+        return { text: ok ? '✅ nomor diaktifkan' : 'ga nemu nomor itu' };
+    },
+    '/allowoff': async (args, ctx) => {
+        if (!ctx.isOwner) return null;
+        if (!args) return { text: 'format: /allowoff 628xxx' };
+        const ok = allowToggle(args.trim(), false);
+        return { text: ok ? '✅ nomor dinonaktifkan' : 'ga nemu nomor itu' };
+    },
+    // ── FEATURE TOGGLE COMMANDS (owner only) ──
+    '/feature': async (args, ctx) => {
+        if (!ctx.isOwner) return null;
+        if (!args) return { text: 'format: /feature on [featureId]\n/feature off [featureId]\n/features — lihat semua' };
+        const parts = args.split(/\s+/);
+        const action = parts[0].toLowerCase();
+        const featureId = parts[1];
+        if (!featureId) return { text: 'tambahin feature id nya dong\ncontoh: /feature on youtube_download' };
+        if (action === 'on') {
+            setFeatureToggle(featureId, true, null);
+            return { text: `✅ Fitur *${featureId}* diaktifkan` };
+        }
+        if (action === 'off') {
+            setFeatureToggle(featureId, false, ctx.senderId || 'owner');
+            return { text: `🔴 Fitur *${featureId}* dinonaktifkan` };
+        }
+        return { text: 'gunakan on/off\ncontoh: /feature on youtube_download' };
+    },
+    '/features': async (_args, ctx) => {
+        if (!ctx.isOwner) return null;
+        const toggles = getAllFeatureToggles();
+        const { getAllFeatures } = require('./featureRegistry');
+        const features = getAllFeatures();
+        const lines = features.map(f => {
+            const enabled = toggles[f.id] === undefined ? true : toggles[f.id];
+            return `${enabled ? '✅' : '🔴'} ${f.id} — ${f.name}`;
+        });
+        return { text: `🔧 *Feature Status*\n\n${lines.join('\n')}` };
     },
 };
 
