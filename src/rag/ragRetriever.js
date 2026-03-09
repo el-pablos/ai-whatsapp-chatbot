@@ -33,6 +33,7 @@ const retrieve = async (query, options = {}) => {
     const minScore = options.minScore ?? MIN_RELEVANCE_SCORE;
     const filter = options.filter || {};
 
+    try {
     // Check if store has any vectors
     const storeStats = getStoreStats();
     if (storeStats.size === 0) {
@@ -78,6 +79,10 @@ const retrieve = async (query, options = {}) => {
             minScore: final.length > 0 ? final[final.length - 1].score : 0
         }
     };
+    } catch (err) {
+        console.error('[RAGRetriever] Retrieve failed:', err.message);
+        return { chunks: [], query, stats: { searched: 0, found: 0, error: err.message } };
+    }
 };
 
 /**

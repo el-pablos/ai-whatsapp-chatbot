@@ -109,6 +109,7 @@ const formatAnswer = (answer, stats = {}, showStats = false) => {
  * @returns {Promise<{ answer: string, citations: Array }>}
  */
 const generateWithCitations = async (query, chunks, options = {}) => {
+    try {
     if (!chunks || chunks.length === 0) {
         const result = await generate(query, '', options);
         return { answer: result.answer, citations: [] };
@@ -142,6 +143,16 @@ When using information from the context, reference it with [N] markers matching 
         answer: result.answer,
         citations
     };
+    } catch (err) {
+        console.error('[RAGGenerator] generateWithCitations failed:', err.message);
+        // Fallback: try generating without citations
+        try {
+            const fallback = await generate(query, '', {});
+            return { answer: fallback.answer, citations: [] };
+        } catch {
+            return { answer: 'Maaf, gagal generate jawaban dengan sumber. Coba lagi ya.', citations: [] };
+        }
+    }
 };
 
 // ─── Internal helpers ────────────────────────────────────────

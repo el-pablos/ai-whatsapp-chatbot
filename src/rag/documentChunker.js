@@ -29,6 +29,8 @@ const chunkText = (text, options = {}) => {
         return [];
     }
 
+    try {
+
     const chunkSize = _clamp(options.chunkSize || DEFAULT_CHUNK_SIZE, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
     const overlap = Math.min(options.overlap ?? DEFAULT_CHUNK_OVERLAP, Math.floor(chunkSize / 2));
     const documentId = options.documentId || _generateId();
@@ -79,6 +81,10 @@ const chunkText = (text, options = {}) => {
     }
 
     return chunks;
+    } catch (err) {
+        console.error('[DocumentChunker] chunkText failed:', err.message);
+        return [];
+    }
 };
 
 /**
@@ -90,6 +96,8 @@ const chunkText = (text, options = {}) => {
  */
 const chunkMarkdown = (markdown, options = {}) => {
     if (!markdown || typeof markdown !== 'string') return [];
+
+    try {
 
     const documentId = options.documentId || _generateId();
     const chunkSize = _clamp(options.chunkSize || DEFAULT_CHUNK_SIZE, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
@@ -137,6 +145,10 @@ const chunkMarkdown = (markdown, options = {}) => {
     }
 
     return chunks;
+    } catch (err) {
+        console.error('[DocumentChunker] chunkMarkdown failed:', err.message);
+        return [];
+    }
 };
 
 /**
@@ -148,6 +160,8 @@ const chunkMarkdown = (markdown, options = {}) => {
  */
 const chunkConversation = (chatText, options = {}) => {
     if (!chatText || typeof chatText !== 'string') return [];
+
+    try {
 
     const documentId = options.documentId || _generateId();
     const chunkSize = _clamp(options.chunkSize || DEFAULT_CHUNK_SIZE, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE);
@@ -178,6 +192,10 @@ const chunkConversation = (chatText, options = {}) => {
     }
 
     return chunks;
+    } catch (err) {
+        console.error('[DocumentChunker] chunkConversation failed:', err.message);
+        return [];
+    }
 };
 
 /**

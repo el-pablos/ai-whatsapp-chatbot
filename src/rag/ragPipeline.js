@@ -78,17 +78,28 @@ const ingest = async (text, options = {}) => {
         const texts = chunks.map(c => c.text);
         const embeddings = await generateBatchEmbeddings(texts);
 
-        // Step 3: Store vectors
-        const items = chunks.map((chunk, i) => ({
-            id: chunk.id,
-            vector: embeddings[i],
-            metadata: {
-                ...chunk.metadata,
-                text: chunk.text
+        // Filter out zero vectors (failed embeddings)
+        const validItems = [];
+        let zeroVectors = 0;
+        for (let i = 0; i < chunks.length; i++) {
+            const isZero = embeddings[i].every(v => v === 0);
+            if (isZero) {
+                zeroVectors++;
+                continue;
             }
-        }));
+            validItems.push({
+                id: chunks[i].id,
+                vector: embeddings[i],
+                metadata: { ...chunks[i].metadata, text: chunks[i].text }
+            });
+        }
 
-        const { added, failed } = addBatch(items);
+        if (validItems.length === 0) {
+            return { success: false, documentId, chunksStored: 0, error: 'All embeddings failed' };
+        }
+
+        // Step 3: Store vectors
+        const { added, failed } = addBatch(validItems);
 
         return {
             success: added > 0,

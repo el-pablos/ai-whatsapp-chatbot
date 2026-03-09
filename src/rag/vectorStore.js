@@ -245,7 +245,7 @@ const loadFromDisk = () => {
 
         let loaded = 0;
         for (const entry of data) {
-            if (entry.id && entry.vector && Array.isArray(entry.vector)) {
+            if (entry.id && entry.vector && Array.isArray(entry.vector) && entry.vector.length > 0) {
                 _store.set(entry.id, {
                     id: entry.id,
                     vector: entry.vector,
