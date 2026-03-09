@@ -66,6 +66,7 @@ const CMD_FEATURE_MAP = {
     '/backup': 'admin_backup',
     '/verify': 'live_verification',
     '/videonotes': 'video_notes', '/vnotes': 'video_notes',
+    '/reasoning': 'smart_reasoning', '/think': 'smart_reasoning', '/mikir': 'smart_reasoning',
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -159,6 +160,28 @@ const PREFIX_COMMANDS = {
     },
     '/vnotes': async (args, ctx) => {
         const handler = PREFIX_COMMANDS['/videonotes'];
+        return handler(args, ctx);
+    },
+    '/reasoning': async (args, ctx) => {
+        if (!args || args.trim().length === 0) return { text: 'kasih pertanyaan dong cuy\ncontoh: /reasoning jelaskan dampak AI terhadap ekonomi' };
+        try {
+            const { performReasoning } = require('./reasoning/chainOfThought');
+            const { formatForWhatsApp } = require('./reasoning/reasoningParser');
+            const result = await performReasoning(args.trim(), {
+                conversationHistory: ctx?.conversationHistory || []
+            });
+            if (!result.success) return { text: result.error || 'gagal reasoning bre 😕' };
+            return { text: formatForWhatsApp(result) };
+        } catch (err) {
+            return { text: `gagal reasoning: ${err.message}` };
+        }
+    },
+    '/think': async (args, ctx) => {
+        const handler = PREFIX_COMMANDS['/reasoning'];
+        return handler(args, ctx);
+    },
+    '/mikir': async (args, ctx) => {
+        const handler = PREFIX_COMMANDS['/reasoning'];
         return handler(args, ctx);
     },
     '/translate': async (args, ctx) => {
