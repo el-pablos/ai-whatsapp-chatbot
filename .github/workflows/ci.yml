@@ -34,7 +34,7 @@ jobs:
         run: npm test
         env:
           COPILOT_API_URL: http://localhost:4141/v1/chat/completions
-          COPILOT_API_MODEL: gpt-4o
+          COPILOT_API_MODEL: claude-sonnet-4-20250514
           WA_AUTH_METHOD: qr
           NODE_ENV: test
 
