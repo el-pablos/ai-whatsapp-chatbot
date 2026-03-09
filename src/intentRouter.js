@@ -43,6 +43,27 @@ const { addNumber: allowAdd, removeNumber: allowRemove, toggleNumber: allowToggl
 const { normalizePhoneNumber, isFeatureEnabled, setFeatureToggle, getAllFeatureToggles } = require('./database');
 
 // ═══════════════════════════════════════════════════════════
+//  COMMAND → FEATURE ID MAPPING (for feature toggle checks)
+// ═══════════════════════════════════════════════════════════
+const CMD_FEATURE_MAP = {
+    '/clear': 'admin_clear', '/reset': 'admin_clear', '/stats': 'admin_stats',
+    '/kalender': 'calendar_today', '/calendar': 'calendar_today', '/today': 'calendar_today', '/tanggal': 'calendar_today',
+    '/libur': 'calendar_holidays',
+    '/zodiak': 'calendar_zodiac', '/zodiac': 'calendar_zodiac',
+    '/ultah': 'calendar_birthday', '/birthday': 'calendar_birthday',
+    '/reminder': 'reminder_create', '/pengingat': 'reminder_create',
+    '/reminders': 'reminder_list', '/pengingats': 'reminder_list',
+    '/translate': 'translate', '/bahasa': 'translate', '/tr': 'translate', '/languages': 'translate',
+    '/gif': 'gif_search', '/qr': 'qr_generate', '/pdf': 'pdf_edit',
+    '/poll': 'poll', '/vote': 'poll', '/hasilpoll': 'poll', '/tutuppoll': 'poll',
+    '/hitung': 'calculator', '/calc': 'calculator', '/convert': 'calculator',
+    '/rss': 'rss_feeds', '/imagine': 'image_gen', '/gambar': 'image_gen',
+    '/jadwal': 'scheduled_message', '/schedule': 'scheduled_message',
+    '/notes': 'note_create', '/catatan': 'note_create', '/todos': 'todo_manage',
+    '/backup': 'admin_backup',
+};
+
+// ═══════════════════════════════════════════════════════════
 //  FAST-PATH COMMANDS (no AI needed)
 // ═══════════════════════════════════════════════════════════
 
@@ -295,6 +316,12 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
 
         // Exact match
         if (FAST_COMMANDS[lower]) {
+            // Feature toggle check
+            const featureId = CMD_FEATURE_MAP[lower];
+            if (featureId && !isFeatureEnabled(featureId)) {
+                await sock.sendMessage(chatId, { text: `⚠️ Fitur ${featureId} lagi dimatiin sama admin.` }, { quoted: ctx.rawMsg });
+                return;
+            }
             const result = await FAST_COMMANDS[lower](null, {
                 chatId,
                 sock,
@@ -309,6 +336,12 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
         // Prefix match
         for (const [prefix, handler] of Object.entries(PREFIX_COMMANDS)) {
             if (lower.startsWith(prefix)) {
+                // Feature toggle check
+                const featureId = CMD_FEATURE_MAP[prefix];
+                if (featureId && !isFeatureEnabled(featureId)) {
+                    await sock.sendMessage(chatId, { text: `⚠️ Fitur ${featureId} lagi dimatiin sama admin.` }, { quoted: ctx.rawMsg });
+                    return;
+                }
                 const args = text.slice(prefix.length).trim();
                 if (!args && ['/zodiak', '/zodiac', '/ultah', '/birthday'].includes(prefix)) {
                     // Need args — send usage hint
