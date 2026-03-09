@@ -49,6 +49,7 @@ const { routeMessage } = require('./intentRouter');
 
 // Legacy imports (still used for lifecycle / helpers)
 const { startHealthCheckServer } = require('./healthCheck');
+const { startDashboardServer } = require('./dashboard/server');
 const { syncDNSRecord } = require('./dnsUpdater');
 const { 
     initDatabase, 
@@ -602,6 +603,8 @@ const processMessage = async (msg) => {
 const gracefulShutdown = async (signal) => {
     console.log(`\n[Bot] Received ${signal}, shutting down gracefully...`);
     
+    const { stopDashboardServer } = require('./dashboard/server');
+    await stopDashboardServer().catch(() => {});
     closeDatabase();
     
     if (sock) {
@@ -632,7 +635,11 @@ const main = async () => {
         console.log('[Boot] Starting Health Check server...');
         await startHealthCheckServer();
 
-        // 2. Sync DNS Record ke Cloudflare (optional)
+        // 2. Start Dashboard Admin Server
+        console.log('[Boot] Starting Dashboard Admin server...');
+        await startDashboardServer();
+
+        // 3. Sync DNS Record ke Cloudflare (optional)
         if (process.env.CF_ZONE_ID && process.env.CF_DNS_API_TOKEN && process.env.CF_TARGET_DOMAIN) {
             console.log('[Boot] Syncing DNS record to Cloudflare...');
             const dnsResult = await syncDNSRecord();
@@ -641,7 +648,7 @@ const main = async () => {
             console.log('[Boot] Cloudflare DNS not configured, skipping DNS sync.');
         }
 
-        // 3. Connect ke WhatsApp
+        // 4. Connect ke WhatsApp
         console.log('[Boot] Connecting to WhatsApp...');
         await connectToWhatsApp();
 
