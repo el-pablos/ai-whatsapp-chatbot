@@ -597,6 +597,18 @@ const FEATURES = [
         output: { confirmation: 'string' },
         examples: ['/schedule besok jam 10 | selamat pagi!', '/schedule list'],
     },
+
+    // ── V5: Live Verification ──────────────────────────────────
+    {
+        id: 'live_verification',
+        name: 'Live Internet Verification',
+        module: 'liveVerifier',
+        description: 'Auto-verify AI responses against live internet data. Checks prices, news, statistics, and factual claims in real-time.',
+        trigger: 'Automatic when AI response contains factual claims, or /verify [query]',
+        input: { query: 'string', ai_response: 'string' },
+        output: { verified: 'string', confidence: 'number', updatedResponse: 'string', sources: 'array' },
+        examples: ['harga bitcoin sekarang berapa?', '/verify siapa presiden Indonesia', 'berita terbaru gempa'],
+    },
 ];
 
 /**
