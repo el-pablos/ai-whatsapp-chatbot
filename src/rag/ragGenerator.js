@@ -33,7 +33,7 @@ const generate = async (query, context, options = {}) => {
 
     const language = options.language || 'id';
     const maxTokens = options.maxTokens || 1500;
-    const hasContext = context && context.trim().length > 0;
+    const hasContext = !!(context && context.trim().length > 0);
 
     const systemPrompt = options.systemPrompt || _buildSystemPrompt(language, hasContext);
     const userPrompt = _buildUserPrompt(query, context);
