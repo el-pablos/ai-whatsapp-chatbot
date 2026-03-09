@@ -182,6 +182,90 @@ const initDatabase = () => {
         );
         CREATE INDEX IF NOT EXISTS idx_sched_status ON scheduled_messages(status, scheduled_at);
     `);
+
+    // ═══════════════════════════════════════════════════════════
+    //  V4.1 TABLES — Dashboard, Allowlist, Feature Toggles, Admin
+    // ═══════════════════════════════════════════════════════════
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS allowlist (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            phone_number TEXT NOT NULL UNIQUE,
+            display_name TEXT,
+            added_by TEXT NOT NULL,
+            added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            is_active INTEGER DEFAULT 1,
+            notes TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_allowlist_phone ON allowlist(phone_number);
+        CREATE INDEX IF NOT EXISTS idx_allowlist_active ON allowlist(is_active);
+    `);
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS bot_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            config_key TEXT NOT NULL UNIQUE,
+            config_value TEXT NOT NULL,
+            description TEXT,
+            config_type TEXT DEFAULT 'string',
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_by TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_bot_config_key ON bot_config(config_key);
+    `);
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS feature_toggles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            feature_id TEXT NOT NULL UNIQUE,
+            is_enabled INTEGER DEFAULT 1,
+            disabled_by TEXT,
+            disabled_at DATETIME,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_feature_toggles_id ON feature_toggles(feature_id);
+    `);
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS admin_users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            display_name TEXT,
+            role TEXT DEFAULT 'admin',
+            last_login DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            is_active INTEGER DEFAULT 1
+        );
+    `);
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS admin_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_token TEXT NOT NULL UNIQUE,
+            admin_id INTEGER NOT NULL,
+            ip_address TEXT,
+            user_agent TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            expires_at DATETIME NOT NULL,
+            FOREIGN KEY (admin_id) REFERENCES admin_users(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_admin_sessions_token ON admin_sessions(session_token);
+    `);
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS activity_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            admin_id INTEGER,
+            action TEXT NOT NULL,
+            target TEXT,
+            details TEXT,
+            ip_address TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at);
+    `);
     
     console.log('[Database] SQLite initialized at', DB_PATH);
     return db;
@@ -985,6 +1069,324 @@ const getUserScheduledMessages = (userId) => {
     ).all(userId);
 };
 
+// ═══════════════════════════════════════════════════════════
+//  ALLOWLIST CRUD
+// ═══════════════════════════════════════════════════════════
+
+let allowlistCache = new Map();
+let allowlistCacheTime = 0;
+const ALLOWLIST_CACHE_TTL = 5 * 60 * 1000;
+
+const normalizePhoneNumber = (phone) => {
+    if (!phone) return '';
+    let cleaned = phone.replace(/[^\d]/g, '');
+    // Strip @s.whatsapp.net / @g.us
+    cleaned = cleaned.split('@')[0];
+    // 08xxx → 628xxx
+    if (cleaned.startsWith('0')) cleaned = '62' + cleaned.slice(1);
+    // +62xxx (already cleaned of +)
+    return cleaned;
+};
+
+const refreshAllowlistCache = () => {
+    const database = initDatabase();
+    const rows = database.prepare('SELECT phone_number, display_name, is_active, notes FROM allowlist').all();
+    allowlistCache.clear();
+    for (const row of rows) {
+        allowlistCache.set(row.phone_number, row);
+    }
+    allowlistCacheTime = Date.now();
+};
+
+const addToAllowlist = (phoneNumber, displayName, addedBy, notes) => {
+    const database = initDatabase();
+    const normalized = normalizePhoneNumber(phoneNumber);
+    if (!normalized) return null;
+    const stmt = database.prepare(
+        `INSERT INTO allowlist (phone_number, display_name, added_by, notes)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(phone_number) DO UPDATE SET
+           display_name = COALESCE(excluded.display_name, allowlist.display_name),
+           notes = COALESCE(excluded.notes, allowlist.notes),
+           is_active = 1,
+           updated_at = CURRENT_TIMESTAMP`
+    );
+    stmt.run(normalized, displayName || null, addedBy, notes || null);
+    refreshAllowlistCache();
+    return { phone_number: normalized, display_name: displayName };
+};
+
+const removeFromAllowlist = (phoneNumber) => {
+    const database = initDatabase();
+    const normalized = normalizePhoneNumber(phoneNumber);
+    const result = database.prepare('DELETE FROM allowlist WHERE phone_number = ?').run(normalized);
+    refreshAllowlistCache();
+    return result.changes > 0;
+};
+
+const toggleAllowlist = (phoneNumber, isActive) => {
+    const database = initDatabase();
+    const normalized = normalizePhoneNumber(phoneNumber);
+    const result = database.prepare(
+        'UPDATE allowlist SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE phone_number = ?'
+    ).run(isActive ? 1 : 0, normalized);
+    refreshAllowlistCache();
+    return result.changes > 0;
+};
+
+const updateAllowlistEntry = (phoneNumber, fields) => {
+    const database = initDatabase();
+    const normalized = normalizePhoneNumber(phoneNumber);
+    const sets = [];
+    const vals = [];
+    if (fields.display_name !== undefined) { sets.push('display_name = ?'); vals.push(fields.display_name); }
+    if (fields.notes !== undefined) { sets.push('notes = ?'); vals.push(fields.notes); }
+    if (fields.is_active !== undefined) { sets.push('is_active = ?'); vals.push(fields.is_active ? 1 : 0); }
+    if (sets.length === 0) return false;
+    sets.push('updated_at = CURRENT_TIMESTAMP');
+    vals.push(normalized);
+    const result = database.prepare(`UPDATE allowlist SET ${sets.join(', ')} WHERE phone_number = ?`).run(...vals);
+    refreshAllowlistCache();
+    return result.changes > 0;
+};
+
+const getAllowlist = () => {
+    const database = initDatabase();
+    return database.prepare('SELECT * FROM allowlist ORDER BY added_at DESC').all();
+};
+
+const isPhoneAllowed = (phoneNumber) => {
+    if (Date.now() - allowlistCacheTime > ALLOWLIST_CACHE_TTL) {
+        try { refreshAllowlistCache(); } catch (e) { /* cache stale is ok */ }
+    }
+    const normalized = normalizePhoneNumber(phoneNumber);
+    const entry = allowlistCache.get(normalized);
+    return entry ? entry.is_active === 1 : false;
+};
+
+const getActiveAllowlistCount = () => {
+    const database = initDatabase();
+    const row = database.prepare('SELECT COUNT(*) as count FROM allowlist WHERE is_active = 1').get();
+    return row.count;
+};
+
+// ═══════════════════════════════════════════════════════════
+//  BOT CONFIG CRUD
+// ═══════════════════════════════════════════════════════════
+
+const setConfig = (key, value, description, type, updatedBy) => {
+    const database = initDatabase();
+    database.prepare(
+        `INSERT INTO bot_config (config_key, config_value, description, config_type, updated_by)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(config_key) DO UPDATE SET
+           config_value = excluded.config_value,
+           description = COALESCE(excluded.description, bot_config.description),
+           config_type = COALESCE(excluded.config_type, bot_config.config_type),
+           updated_by = excluded.updated_by,
+           updated_at = CURRENT_TIMESTAMP`
+    ).run(key, String(value), description || null, type || 'string', updatedBy || null);
+};
+
+const getConfig = (key, defaultValue = null) => {
+    const database = initDatabase();
+    const row = database.prepare('SELECT config_value, config_type FROM bot_config WHERE config_key = ?').get(key);
+    if (!row) return defaultValue;
+    if (row.config_type === 'number') return Number(row.config_value);
+    if (row.config_type === 'boolean') return row.config_value === 'true';
+    return row.config_value;
+};
+
+const getAllConfigs = () => {
+    const database = initDatabase();
+    const rows = database.prepare('SELECT * FROM bot_config ORDER BY config_key').all();
+    const obj = {};
+    for (const row of rows) obj[row.config_key] = row.config_value;
+    return obj;
+};
+
+const getAllConfigRows = () => {
+    const database = initDatabase();
+    return database.prepare('SELECT * FROM bot_config ORDER BY config_key').all();
+};
+
+const deleteConfig = (key) => {
+    const database = initDatabase();
+    return database.prepare('DELETE FROM bot_config WHERE config_key = ?').run(key).changes > 0;
+};
+
+const initDefaultConfigs = () => {
+    const defaults = [
+        ['copilot_api_model', process.env.COPILOT_API_MODEL || 'claude-sonnet-4-20250514', 'AI model name', 'string'],
+        ['session_expiry_hours', String(process.env.SESSION_EXPIRY_HOURS || '24'), 'Session expiry in hours', 'number'],
+        ['log_level', process.env.LOG_LEVEL || 'info', 'Log level', 'string'],
+        ['bot_name', process.env.BOT_NAME || 'Tama', 'Bot display name', 'string'],
+    ];
+    const database = initDatabase();
+    const stmt = database.prepare(
+        `INSERT OR IGNORE INTO bot_config (config_key, config_value, description, config_type) VALUES (?, ?, ?, ?)`
+    );
+    for (const [k, v, d, t] of defaults) stmt.run(k, v, d, t);
+};
+
+// ═══════════════════════════════════════════════════════════
+//  FEATURE TOGGLES CRUD
+// ═══════════════════════════════════════════════════════════
+
+let featureToggleCache = new Map();
+let featureToggleCacheTime = 0;
+const FEATURE_CACHE_TTL = 5 * 60 * 1000;
+
+const refreshFeatureToggleCache = () => {
+    const database = initDatabase();
+    const rows = database.prepare('SELECT feature_id, is_enabled FROM feature_toggles').all();
+    featureToggleCache.clear();
+    for (const row of rows) featureToggleCache.set(row.feature_id, row.is_enabled === 1);
+    featureToggleCacheTime = Date.now();
+};
+
+const setFeatureToggle = (featureId, isEnabled, disabledBy) => {
+    const database = initDatabase();
+    database.prepare(
+        `INSERT INTO feature_toggles (feature_id, is_enabled, disabled_by, disabled_at, updated_at)
+         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(feature_id) DO UPDATE SET
+           is_enabled = excluded.is_enabled,
+           disabled_by = excluded.disabled_by,
+           disabled_at = excluded.disabled_at,
+           updated_at = CURRENT_TIMESTAMP`
+    ).run(featureId, isEnabled ? 1 : 0, isEnabled ? null : (disabledBy || null), isEnabled ? null : new Date().toISOString());
+    refreshFeatureToggleCache();
+};
+
+const getFeatureToggle = (featureId) => {
+    const database = initDatabase();
+    const row = database.prepare('SELECT * FROM feature_toggles WHERE feature_id = ?').get(featureId);
+    return row || { feature_id: featureId, is_enabled: 1 };
+};
+
+const getAllFeatureToggles = () => {
+    const database = initDatabase();
+    const rows = database.prepare('SELECT * FROM feature_toggles').all();
+    const obj = {};
+    for (const row of rows) obj[row.feature_id] = row.is_enabled === 1;
+    return obj;
+};
+
+const isFeatureEnabled = (featureId) => {
+    if (!featureId) return true;
+    if (Date.now() - featureToggleCacheTime > FEATURE_CACHE_TTL) {
+        try { refreshFeatureToggleCache(); } catch (e) { /* stale ok */ }
+    }
+    const cached = featureToggleCache.get(featureId);
+    return cached === undefined ? true : cached;
+};
+
+// ═══════════════════════════════════════════════════════════
+//  ADMIN USERS CRUD
+// ═══════════════════════════════════════════════════════════
+
+const createAdminUser = (username, passwordHash, displayName, role) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'INSERT INTO admin_users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)'
+    ).run(username, passwordHash, displayName || username, role || 'admin');
+    return { id: result.lastInsertRowid };
+};
+
+const getAdminByUsername = (username) => {
+    const database = initDatabase();
+    return database.prepare('SELECT * FROM admin_users WHERE username = ?').get(username) || null;
+};
+
+const getAdminById = (id) => {
+    const database = initDatabase();
+    return database.prepare('SELECT * FROM admin_users WHERE id = ?').get(id) || null;
+};
+
+const updateAdminLastLogin = (id) => {
+    const database = initDatabase();
+    database.prepare('UPDATE admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+};
+
+const updateAdminPassword = (id, passwordHash) => {
+    const database = initDatabase();
+    database.prepare('UPDATE admin_users SET password_hash = ? WHERE id = ?').run(passwordHash, id);
+};
+
+const initDefaultAdmin = () => {
+    const database = initDatabase();
+    const count = database.prepare('SELECT COUNT(*) as c FROM admin_users').get();
+    if (count.c > 0) return null;
+    const username = process.env.DASHBOARD_ADMIN_USER || 'admin';
+    const password = process.env.DASHBOARD_ADMIN_PASS || 'admin';
+    try {
+        const bcrypt = require('bcryptjs');
+        const hash = bcrypt.hashSync(password, 12);
+        return createAdminUser(username, hash, 'Administrator', 'admin');
+    } catch (e) {
+        console.error('[Database] Failed to create default admin:', e.message);
+        return null;
+    }
+};
+
+// ═══════════════════════════════════════════════════════════
+//  ADMIN SESSIONS CRUD
+// ═══════════════════════════════════════════════════════════
+
+const createAdminSession = (adminId, sessionToken, ipAddress, userAgent, expiresAt) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'INSERT INTO admin_sessions (admin_id, session_token, ip_address, user_agent, expires_at) VALUES (?, ?, ?, ?, ?)'
+    ).run(adminId, sessionToken, ipAddress || null, userAgent || null, expiresAt);
+    return { id: result.lastInsertRowid };
+};
+
+const getAdminSession = (sessionToken) => {
+    const database = initDatabase();
+    return database.prepare(
+        `SELECT s.*, u.username, u.display_name, u.role, u.is_active as admin_active
+         FROM admin_sessions s
+         JOIN admin_users u ON s.admin_id = u.id
+         WHERE s.session_token = ? AND s.expires_at > datetime('now')`
+    ).get(sessionToken) || null;
+};
+
+const deleteAdminSession = (sessionToken) => {
+    const database = initDatabase();
+    return database.prepare('DELETE FROM admin_sessions WHERE session_token = ?').run(sessionToken).changes > 0;
+};
+
+const cleanExpiredSessions = () => {
+    const database = initDatabase();
+    return database.prepare("DELETE FROM admin_sessions WHERE expires_at <= datetime('now')").run().changes;
+};
+
+// ═══════════════════════════════════════════════════════════
+//  ACTIVITY LOGS CRUD
+// ═══════════════════════════════════════════════════════════
+
+const logActivity = (adminId, action, target, details, ipAddress) => {
+    const database = initDatabase();
+    database.prepare(
+        'INSERT INTO activity_logs (admin_id, action, target, details, ip_address) VALUES (?, ?, ?, ?, ?)'
+    ).run(adminId || null, action, target || null, details || null, ipAddress || null);
+};
+
+const getActivityLogs = (limit = 50, offset = 0) => {
+    const database = initDatabase();
+    return database.prepare(
+        'SELECT l.*, u.username FROM activity_logs l LEFT JOIN admin_users u ON l.admin_id = u.id ORDER BY l.created_at DESC LIMIT ? OFFSET ?'
+    ).all(limit, offset);
+};
+
+const getActivityLogsByAdmin = (adminId, limit = 50) => {
+    const database = initDatabase();
+    return database.prepare(
+        'SELECT * FROM activity_logs WHERE admin_id = ? ORDER BY created_at DESC LIMIT ?'
+    ).all(adminId, limit);
+};
+
 module.exports = {
     initDatabase,
     saveMessage,
@@ -1040,6 +1442,45 @@ module.exports = {
     getPendingScheduledMessages,
     markScheduledMessageSent,
     getUserScheduledMessages,
+    // Allowlist
+    normalizePhoneNumber,
+    addToAllowlist,
+    removeFromAllowlist,
+    toggleAllowlist,
+    updateAllowlistEntry,
+    getAllowlist,
+    isPhoneAllowed,
+    refreshAllowlistCache,
+    getActiveAllowlistCount,
+    // Bot config
+    setConfig,
+    getConfig,
+    getAllConfigs,
+    getAllConfigRows,
+    deleteConfig,
+    initDefaultConfigs,
+    // Feature toggles
+    setFeatureToggle,
+    getFeatureToggle,
+    getAllFeatureToggles,
+    isFeatureEnabled,
+    refreshFeatureToggleCache,
+    // Admin users
+    createAdminUser,
+    getAdminByUsername,
+    getAdminById,
+    updateAdminLastLogin,
+    updateAdminPassword,
+    initDefaultAdmin,
+    // Admin sessions
+    createAdminSession,
+    getAdminSession,
+    deleteAdminSession,
+    cleanExpiredSessions,
+    // Activity logs
+    logActivity,
+    getActivityLogs,
+    getActivityLogsByAdmin,
     // Constants (for testing)
     RETENTION_MS,
     RETENTION_MONTHS,
