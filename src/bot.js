@@ -61,6 +61,7 @@ const {
 } = require('./backupHandler');
 const { checkDependencies } = require('./youtubeHandler');
 const { reportBugToOwner } = require('./bugReporter');
+const { isAllowed } = require('./allowlistManager');
 const { startReminderCron } = require('./reminderHandler');
 const { detectMemoryIntent, autoCapture } = require('./memoryHandler');
 const { checkUserFeeds, formatFeedUpdates } = require('./rssHandler');
@@ -568,6 +569,12 @@ const processMessage = async (msg) => {
         recentMessageHashes.set(contentHash, Date.now());
     }
     processedMessages.set(messageId, Date.now());
+
+    // ALLOWLIST FILTER — check before any processing
+    const senderNumber = msg.key.participant || sender;
+    if (!isAllowed(senderNumber)) {
+        return; // Silent — no response, no logging
+    }
 
     // AI-FIRST: Normalize → Route
     const normalized = normalizeMessage(msg);
