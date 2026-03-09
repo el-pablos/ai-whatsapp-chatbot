@@ -609,6 +609,18 @@ const FEATURES = [
         output: { verified: 'string', confidence: 'number', updatedResponse: 'string', sources: 'array' },
         examples: ['harga bitcoin sekarang berapa?', '/verify siapa presiden Indonesia', 'berita terbaru gempa'],
     },
+
+    // ── V5: Video Notes ────────────────────────────────────────
+    {
+        id: 'video_notes',
+        name: 'Video Notes Extractor',
+        module: 'videoAnalyzer',
+        description: 'Generate comprehensive notes from YouTube videos — includes AI summary, key points, timestamps, and chapters.',
+        trigger: '/videonotes [YouTube URL] or /vnotes [YouTube URL]',
+        input: { url: 'string', chapters_only: 'boolean' },
+        output: { success: 'boolean', notes: 'string' },
+        examples: ['/videonotes https://youtube.com/watch?v=abc', '/vnotes https://youtu.be/xyz', 'buatin notes video ini'],
+    },
 ];
 
 /**
