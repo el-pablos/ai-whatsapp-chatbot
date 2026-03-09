@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: tama-ai-bot-dev
+    restart: unless-stopped
+    ports:
+      - "8008:8008"
+      - "6666:6666"
+      - "5173:5173"
+    volumes:
+      - ./src:/app/src
+      - ./data:/app/data
+      - ./auth_info_multi:/app/auth_info_multi
+      - ./.env:/app/.env:ro
+    environment:
+      - NODE_ENV=development
+      - HEALTH_CHECK_PORT=8008
+      - DASHBOARD_PORT=6666
+    command: ["node", "--watch", "src/bot.js"]

@@ -1,0 +1,14 @@
+node_modules/
+data/
+auth_info_multi/
+tmp/
+.env
+*.log
+.git/
+tests/
+coverage/
+src/dashboard/frontend/
+vite.config.js
+*.md
+.github/
+.vscode/
