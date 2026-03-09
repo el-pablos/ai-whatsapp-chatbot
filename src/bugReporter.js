@@ -16,6 +16,19 @@ const COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
 const DEP_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour for dependency-missing errors
 
 /**
+ * Categorize error type for smarter reporting
+ */
+const categorizeError = (error) => {
+    const msg = typeof error === 'string' ? error : (error?.message || '');
+    const code = error?.code || '';
+    if (isDependencyMissing(msg)) return 'dependency';
+    if (['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN'].includes(code) || /network|socket hang up|dns/i.test(msg)) return 'network';
+    const status = error?.response?.status;
+    if (status && (status >= 400)) return 'api';
+    return 'logic';
+};
+
+/**
  * Check if an error is a missing system dependency (not a code bug)
  */
 const isDependencyMissing = (errorMessage) => {
@@ -148,5 +161,6 @@ module.exports = {
     reportBugToOwner,
     clearBugCooldowns,
     isDependencyMissing,
+    categorizeError,
     OWNER_JID
 };

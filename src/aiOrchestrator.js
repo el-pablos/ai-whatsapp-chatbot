@@ -113,7 +113,8 @@ const callCopilotAPI = async (messages, tools = null, options = {}) => {
             const retryable = ['ECONNRESET', 'ETIMEDOUT', 'ECONNREFUSED'].includes(errCode) ||
                               (status && status >= 500) || status === 429;
             if (retryable) {
-                const delay = 2000 * (retryCount + 1);
+                const jitter = Math.floor(Math.random() * 1000);
+                const delay = 2000 * (retryCount + 1) + jitter;
                 console.log(`[Orchestrator] Retrying API call ${retryCount + 1}/${MAX_RETRIES} in ${delay}ms (reason: ${errCode || `HTTP ${status}`})`);
                 await new Promise(r => setTimeout(r, delay));
                 return callCopilotAPI(messages, tools, { toolChoice, retryCount: retryCount + 1 });
