@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - 2025-07-08
+
+### 🛡️ Dashboard Admin + Allowlist + Feature Toggle + Docker
+
+Full admin dashboard web UI, phone allowlist system, per-feature toggle,
+and Docker deployment support. Major security hardening for health check endpoints.
+
+### Added
+- **Dashboard Admin Web** (`src/dashboard/server.js`): Express server on port 6666 with 20+ API routes — auth (login/logout/me/change-password), allowlist CRUD, config management, feature toggles, chat monitor, analytics, system logs, user management
+- **Dashboard Frontend** (`src/dashboard/frontend/`): React 19 + Vite 7 + Tailwind CSS 4 SPA with 10 pages — Login, Overview, Allowlist, BotConfig, Features, ChatMonitor, ChatDetail, Analytics, Logs, Settings. Dark mode, Outfit font, brand #465FFF
+- **Allowlist Manager** (`src/allowlistManager.js`): Central allowlist control — owner always allowed, empty list = all allowed, cached phone check
+- **6 new database tables**: allowlist, bot_config, feature_toggles, admin_users, admin_sessions, activity_logs (30+ CRUD functions, 2 in-memory caches)
+- **4 new AI tools**: allowlist.add, allowlist.remove, allowlist.toggle, allowlist.list (64 tools total)
+- **7 WhatsApp commands**: !izinkan, !hapusizin, !toggleizin, !daftarizin, !fitur, !matikanfitur, !hidupkanfitur
+- **Feature Toggle system**: CMD_FEATURE_MAP in intentRouter.js, toggle check before command dispatch, toggle guard in tool execution
+- **Docker setup**: Dockerfile (multi-stage), docker-compose.yml (production), docker-compose.dev.yml (development), .dockerignore
+- **29 new tests** (allowlistManager: 12, dashboardServer: 17) — total 1280 tests, 41 suites
+
+### Changed
+- **bot.js**: Allowlist filter in message processing, dashboard server startup/shutdown integration
+- **intentRouter.js**: Feature toggle checks before FAST_COMMANDS and PREFIX_COMMANDS dispatch
+- **toolRegistry.js**: Owner guard + feature toggle guard in executeTool
+- **healthCheck.js**: Secured /dashboard (redirect), /users, /stats, /cleanup (403 forbidden)
+- **database.js**: Owner check consolidated — delegates to userProfileHelper.js
+
+### Security
+- Admin sessions with bcrypt password hashing + httpOnly cookies
+- Health check endpoints locked down (only /health, /status, /capabilities public)
+- Phone masking in user management API
+
 ## [3.1.0] - 2025-07-31
 
 ### 🎨 PPTX Generation — PowerPoint via AI
