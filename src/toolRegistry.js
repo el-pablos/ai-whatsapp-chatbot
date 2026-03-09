@@ -63,6 +63,45 @@ const {
 const {
     syncDNSRecord,
 } = require('./dnsUpdater');
+const {
+    createReminder, listReminders, deleteReminder,
+} = require('./reminderHandler');
+const {
+    saveMemory, searchMemory, listMemories, deleteMemory,
+} = require('./memoryHandler');
+const {
+    summarizeUrl,
+} = require('./urlSummarizerHandler');
+const {
+    createNote, createTodo, listNotes, listTodos, toggleTodo, searchNotes, deleteNote,
+} = require('./noteHandler');
+const {
+    translateText,
+} = require('./translateHandler');
+const {
+    searchGif,
+} = require('./gifHandler');
+const {
+    generateQRCode,
+} = require('./qrCodeHandler');
+const {
+    mergePDFs, extractPages, getPDFInfo,
+} = require('./pdfEditorHandler');
+const {
+    createPoll, votePoll, closePoll, showPollResults,
+} = require('./pollHandler');
+const {
+    calculateExpression, convertUnit, convertCurrency,
+} = require('./calculatorHandler');
+const {
+    subscribeFeed, listFeeds, unsubscribeFeed, checkUserFeeds,
+} = require('./rssHandler');
+const {
+    generateImage, downloadImageBuffer, isImageGenAvailable,
+} = require('./imageGenHandler');
+const {
+    scheduleMessage, listScheduledMessages,
+} = require('./scheduledMessageHandler');
 
 // ═══════════════════════════════════════════════════════════
 //  TOOL DEFINITIONS
@@ -510,11 +549,490 @@ const TOOLS = [
             return { success: true, message: 'Backup sent' };
         },
     },
-];
 
-// ═══════════════════════════════════════════════════════════
-//  REGISTRY API
-// ═══════════════════════════════════════════════════════════
+    // ── Reminder ─────────────────────────────────────────
+    {
+        name: 'reminder_create',
+        description: 'Create a reminder/alarm for the user. Supports natural language time like "jam 3 sore", "besok jam 10", "30 menit lagi".',
+        parameters: {
+            type: 'object',
+            properties: {
+                message: { type: 'string', description: 'Reminder message' },
+                time: { type: 'string', description: 'Time in natural language (Indonesian), e.g. "jam 3 sore", "besok jam 10", "30 menit lagi"' },
+            },
+            required: ['message', 'time'],
+        },
+        execute: async (params, ctx) => {
+            return createReminder(ctx.senderId || ctx.chatId, params.message, params.time);
+        },
+    },
+    {
+        name: 'reminder_list',
+        description: 'List all active reminders for the user.',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            return { success: true, message: listReminders(ctx.senderId || ctx.chatId) };
+        },
+    },
+    {
+        name: 'reminder_delete',
+        description: 'Delete a specific reminder by ID.',
+        parameters: {
+            type: 'object',
+            properties: {
+                reminder_id: { type: 'number', description: 'Reminder ID to delete' },
+            },
+            required: ['reminder_id'],
+        },
+        execute: async (params, ctx) => {
+            return deleteReminder(ctx.senderId || ctx.chatId, params.reminder_id);
+        },
+    },
+
+    // ── Memory ───────────────────────────────────────────
+    {
+        name: 'memory_save',
+        description: 'Save a piece of information to long-term memory that persists across sessions. Use for user preferences, facts, lessons, events.',
+        parameters: {
+            type: 'object',
+            properties: {
+                key: { type: 'string', description: 'Short key/label for the memory' },
+                value: { type: 'string', description: 'The information to remember' },
+                category: { type: 'string', description: 'Category: preference, fact, event, or lesson', enum: ['preference', 'fact', 'event', 'lesson'] },
+            },
+            required: ['key', 'value'],
+        },
+        execute: async (params, ctx) => {
+            return saveMemory(ctx.senderId || ctx.chatId, params.key, params.value, params.category || 'fact');
+        },
+    },
+    {
+        name: 'memory_search',
+        description: 'Search long-term memory for information about the user.',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Search query' },
+            },
+            required: ['query'],
+        },
+        execute: async (params, ctx) => {
+            const results = searchMemory(ctx.senderId || ctx.chatId, params.query);
+            return { success: true, memories: results };
+        },
+    },
+    {
+        name: 'memory_list',
+        description: 'List all stored memories for the user.',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            return { success: true, message: listMemories(ctx.senderId || ctx.chatId) };
+        },
+    },
+    {
+        name: 'memory_delete',
+        description: 'Delete a specific memory by ID.',
+        parameters: {
+            type: 'object',
+            properties: {
+                memory_id: { type: 'number', description: 'Memory ID to delete' },
+            },
+            required: ['memory_id'],
+        },
+        execute: async (params, ctx) => {
+            return deleteMemory(ctx.senderId || ctx.chatId, params.memory_id);
+        },
+    },
+
+    // ── URL Summarizer ───────────────────────────────────
+    {
+        name: 'url_summarize',
+        description: 'Fetch and summarize a web article or page. Use when user shares a URL or asks to summarize a webpage.',
+        parameters: {
+            type: 'object',
+            properties: {
+                url: { type: 'string', description: 'URL to summarize' },
+            },
+            required: ['url'],
+        },
+        execute: async (params, ctx) => {
+            const aiCall = ctx.aiCall || ((prompt) => prompt);
+            return summarizeUrl(params.url, aiCall);
+        },
+    },
+
+    // ── Notes & Todo ─────────────────────────────────────
+    {
+        name: 'note_create',
+        description: 'Create a new text note for the user.',
+        parameters: {
+            type: 'object',
+            properties: {
+                title: { type: 'string', description: 'Note title' },
+                content: { type: 'string', description: 'Note content' },
+            },
+            required: ['title'],
+        },
+        execute: async (params, ctx) => {
+            return createNote(ctx.senderId || ctx.chatId, params.title, params.content);
+        },
+    },
+    {
+        name: 'todo_create',
+        description: 'Create a new todo/task item for the user.',
+        parameters: {
+            type: 'object',
+            properties: {
+                title: { type: 'string', description: 'Todo description' },
+            },
+            required: ['title'],
+        },
+        execute: async (params, ctx) => {
+            return createTodo(ctx.senderId || ctx.chatId, params.title);
+        },
+    },
+    {
+        name: 'note_list',
+        description: 'List all notes for the user.',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            return { success: true, message: listNotes(ctx.senderId || ctx.chatId) };
+        },
+    },
+    {
+        name: 'todo_list',
+        description: 'List all todos for the user.',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            return { success: true, message: listTodos(ctx.senderId || ctx.chatId) };
+        },
+    },
+    {
+        name: 'todo_toggle',
+        description: 'Toggle a todo item between done and active.',
+        parameters: {
+            type: 'object',
+            properties: {
+                todo_id: { type: 'number', description: 'Todo ID to toggle' },
+            },
+            required: ['todo_id'],
+        },
+        execute: async (params, ctx) => {
+            return toggleTodo(ctx.senderId || ctx.chatId, params.todo_id);
+        },
+    },
+    {
+        name: 'note_search',
+        description: 'Search notes by keyword.',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Search keyword' },
+            },
+            required: ['query'],
+        },
+        execute: async (params, ctx) => {
+            const results = searchNotes(ctx.senderId || ctx.chatId, params.query);
+            return { success: true, notes: results };
+        },
+    },
+    {
+        name: 'note_delete',
+        description: 'Delete a note or todo by ID.',
+        parameters: {
+            type: 'object',
+            properties: {
+                note_id: { type: 'number', description: 'Note/todo ID to delete' },
+            },
+            required: ['note_id'],
+        },
+        execute: async (params, ctx) => {
+            return deleteNote(ctx.senderId || ctx.chatId, params.note_id);
+        },
+    },
+
+    // ── Translate ────────────────────────────────────────
+    {
+        name: 'translate_text',
+        description: 'Translate text to another language. Supports 20 languages: id, en, ja, ko, zh, ar, es, fr, de, it, pt, ru, th, vi, ms, hi, tr, nl, pl, sv.',
+        parameters: {
+            type: 'object',
+            properties: {
+                text: { type: 'string', description: 'Text to translate' },
+                target_language: { type: 'string', description: 'Target language code (e.g. en, ja, ko, id)' },
+            },
+            required: ['text', 'target_language'],
+        },
+        execute: async (params, ctx) => {
+            const { SUPPORTED_LANGUAGES, formatTranslation } = require('./translateHandler');
+            const langName = SUPPORTED_LANGUAGES[params.target_language?.toLowerCase()];
+            if (!langName) return { success: false, error: `Bahasa "${params.target_language}" ga didukung` };
+            const aiCall = ctx.aiCall || ((prompt) => prompt);
+            const result = await translateText(params.text, langName, aiCall);
+            return { success: true, message: formatTranslation(params.text, result, langName) };
+        },
+    },
+
+    // ── GIF Search ───────────────────────────────────────
+    {
+        name: 'gif_search',
+        description: 'Search for a GIF by keyword. Returns a GIF URL that can be sent as media.',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Search keyword for GIF' },
+            },
+            required: ['query'],
+        },
+        execute: async (params) => {
+            const results = await searchGif(params.query, 1);
+            if (!results.length) return { success: false, error: 'Ga nemu GIF buat query itu' };
+            return { success: true, gif: results[0] };
+        },
+    },
+
+    // ── QR Code ──────────────────────────────────────────
+    {
+        name: 'qr_generate',
+        description: 'Generate a QR code image from text or URL.',
+        parameters: {
+            type: 'object',
+            properties: {
+                content: { type: 'string', description: 'Text or URL to encode as QR code' },
+            },
+            required: ['content'],
+        },
+        execute: async (params) => {
+            const buffer = await generateQRCode(params.content);
+            return { success: true, qrBuffer: buffer, content: params.content };
+        },
+    },
+
+    // ── PDF Editor ───────────────────────────────────────
+    {
+        name: 'pdf_info',
+        description: 'Get info about a PDF file (page count, title, author).',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            if (!ctx.documentBuffer) return { success: false, error: 'Ga ada file PDF yang dikirim' };
+            const info = await getPDFInfo(ctx.documentBuffer);
+            return { success: true, ...info };
+        },
+    },
+    {
+        name: 'pdf_extract_pages',
+        description: 'Extract specific pages from a PDF file.',
+        parameters: {
+            type: 'object',
+            properties: {
+                pages: { type: 'string', description: 'Page numbers to extract, e.g. "1,3,5" or "1-5"' },
+            },
+            required: ['pages'],
+        },
+        execute: async (params, ctx) => {
+            if (!ctx.documentBuffer) return { success: false, error: 'Ga ada file PDF yang dikirim' };
+            const { parsePageRange } = require('./pdfEditorHandler');
+            const pageNums = parsePageRange(params.pages);
+            const buffer = await extractPages(ctx.documentBuffer, pageNums);
+            return { success: true, pdfBuffer: buffer, pageCount: pageNums.length };
+        },
+    },
+
+    // ── Poll ─────────────────────────────────────────────
+    {
+        name: 'poll_create',
+        description: 'Create a poll in the current chat. Question and options separated by pipe (|).',
+        parameters: {
+            type: 'object',
+            properties: {
+                question: { type: 'string', description: 'Poll question' },
+                options: { type: 'array', items: { type: 'string' }, description: 'Array of poll options (2-10)' },
+            },
+            required: ['question', 'options'],
+        },
+        execute: async (params, ctx) => {
+            return createPoll(ctx.chatId, ctx.senderId || ctx.chatId, params.question, params.options);
+        },
+    },
+    {
+        name: 'poll_vote',
+        description: 'Vote in the active poll.',
+        parameters: {
+            type: 'object',
+            properties: {
+                option_number: { type: 'number', description: 'Option number to vote for (1-based)' },
+            },
+            required: ['option_number'],
+        },
+        execute: async (params, ctx) => {
+            return votePoll(ctx.chatId, ctx.senderId || ctx.chatId, params.option_number);
+        },
+    },
+    {
+        name: 'poll_results',
+        description: 'Show current poll results.',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            return { success: true, message: showPollResults(ctx.chatId) };
+        },
+    },
+    {
+        name: 'poll_close',
+        description: 'Close the active poll and show final results (creator or owner only).',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            const ownerJid = process.env.OWNER_JID || '';
+            return closePoll(ctx.chatId, ctx.senderId || ctx.chatId, ownerJid);
+        },
+    },
+
+    // ── Calculator ───────────────────────────────────────
+    {
+        name: 'calculator_eval',
+        description: 'Evaluate a math expression. Supports basic math, trig, log, sqrt, factorial, etc. Examples: "2+2", "sqrt(144)", "sin(pi/4)".',
+        parameters: {
+            type: 'object',
+            properties: {
+                expression: { type: 'string', description: 'Math expression to evaluate' },
+            },
+            required: ['expression'],
+        },
+        execute: async (params) => {
+            return calculateExpression(params.expression);
+        },
+    },
+    {
+        name: 'calculator_convert_unit',
+        description: 'Convert between units. Examples: "100 km to mile", "32 degF to degC".',
+        parameters: {
+            type: 'object',
+            properties: {
+                value: { type: 'number', description: 'Numeric value' },
+                from_unit: { type: 'string', description: 'Source unit (e.g. km, kg, degC)' },
+                to_unit: { type: 'string', description: 'Target unit (e.g. mile, lb, degF)' },
+            },
+            required: ['value', 'from_unit', 'to_unit'],
+        },
+        execute: async (params) => {
+            return convertUnit(params.value, params.from_unit, params.to_unit);
+        },
+    },
+    {
+        name: 'calculator_convert_currency',
+        description: 'Convert between currencies using live exchange rates. Examples: "100 USD to IDR".',
+        parameters: {
+            type: 'object',
+            properties: {
+                amount: { type: 'number', description: 'Amount to convert' },
+                from_currency: { type: 'string', description: 'Source currency code (e.g. USD, EUR, IDR)' },
+                to_currency: { type: 'string', description: 'Target currency code' },
+            },
+            required: ['amount', 'from_currency', 'to_currency'],
+        },
+        execute: async (params) => {
+            return convertCurrency(params.amount, params.from_currency, params.to_currency);
+        },
+    },
+
+    // ── RSS Feeds ────────────────────────────────────────
+    {
+        name: 'rss_subscribe',
+        description: 'Subscribe to an RSS feed.',
+        parameters: {
+            type: 'object',
+            properties: {
+                url: { type: 'string', description: 'RSS feed URL' },
+                label: { type: 'string', description: 'Optional label for the feed' },
+            },
+            required: ['url'],
+        },
+        execute: async (params, ctx) => {
+            return subscribeFeed(ctx.senderId || ctx.chatId, params.url, params.label);
+        },
+    },
+    {
+        name: 'rss_list',
+        description: 'List all subscribed RSS feeds.',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            return { success: true, message: listFeeds(ctx.senderId || ctx.chatId) };
+        },
+    },
+    {
+        name: 'rss_unsubscribe',
+        description: 'Unsubscribe from an RSS feed by ID.',
+        parameters: {
+            type: 'object',
+            properties: {
+                feed_id: { type: 'number', description: 'Feed ID to unsubscribe' },
+            },
+            required: ['feed_id'],
+        },
+        execute: async (params, ctx) => {
+            return unsubscribeFeed(ctx.senderId || ctx.chatId, params.feed_id);
+        },
+    },
+    {
+        name: 'rss_check',
+        description: 'Check for new articles in all subscribed RSS feeds.',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            const { formatFeedUpdates } = require('./rssHandler');
+            const updates = await checkUserFeeds(ctx.senderId || ctx.chatId);
+            const formatted = formatFeedUpdates(updates);
+            return { success: true, message: formatted || 'Ga ada artikel baru dari feed kamu' };
+        },
+    },
+
+    // ── Image Generation ─────────────────────────────────
+    {
+        name: 'image_generate',
+        description: 'Generate an image using AI (DALL-E). Requires OPENAI_API_KEY to be set.',
+        parameters: {
+            type: 'object',
+            properties: {
+                prompt: { type: 'string', description: 'Description of the image to generate' },
+                size: { type: 'string', description: 'Image size: 1024x1024, 1792x1024, or 1024x1792', enum: ['1024x1024', '1792x1024', '1024x1792'] },
+            },
+            required: ['prompt'],
+        },
+        execute: async (params) => {
+            if (!isImageGenAvailable()) return { success: false, error: 'Image gen belum dikonfigurasi (OPENAI_API_KEY not set)' };
+            const result = await generateImage(params.prompt, { size: params.size });
+            if (!result.success) return result;
+            const buffer = await downloadImageBuffer(result.url);
+            return { success: true, imageBuffer: buffer, revisedPrompt: result.revisedPrompt };
+        },
+    },
+
+    // ── Scheduled Messages ───────────────────────────────
+    {
+        name: 'schedule_message',
+        description: 'Schedule a message to be sent at a specific time.',
+        parameters: {
+            type: 'object',
+            properties: {
+                message: { type: 'string', description: 'Message to send' },
+                time: { type: 'string', description: 'When to send, natural language (Indonesian)' },
+                target_chat: { type: 'string', description: 'Target chat ID (optional, owner only for other chats)' },
+            },
+            required: ['message', 'time'],
+        },
+        execute: async (params, ctx) => {
+            const target = params.target_chat || ctx.chatId;
+            const isOwner = ctx.isOwner || false;
+            return scheduleMessage(ctx.senderId || ctx.chatId, target, params.message, params.time, isOwner);
+        },
+    },
+    {
+        name: 'schedule_list',
+        description: 'List all scheduled messages.',
+        parameters: { type: 'object', properties: {}, required: [] },
+        execute: async (params, ctx) => {
+            return { success: true, message: listScheduledMessages(ctx.senderId || ctx.chatId) };
+        },
+    },
+];
 
 /**
  * Get all tools
