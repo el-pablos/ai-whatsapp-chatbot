@@ -27,6 +27,10 @@ const { detectPptxRequest } = require('./pptxHandler');
 const { needsVerification } = require('./liveVerifier');
 const { aggregateSearch } = require('./searchAggregator');
 const { verifyWithInternet } = require('./factChecker');
+const { analyzeComplexity } = require('./reasoning/complexityAnalyzer');
+const { performReasoning } = require('./reasoning/chainOfThought');
+const { getCachedReasoning, setCachedReasoning } = require('./reasoning/reasoningCache');
+const { formatForWhatsApp: formatReasoningWA } = require('./reasoning/reasoningParser');
 
 // ═══════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -325,6 +329,35 @@ JANGAN hanya menjawab dengan teks. WAJIB panggil kedua tool tersebut.`,
                     }
                 } catch (verifyErr) {
                     console.error('[Orchestrator] Live verify failed:', verifyErr.message);
+                }
+            }
+        }
+
+        // ── 9c. Smart Reasoning (chain-of-thought) ────────
+        const reasoningEnabled = process.env.REASONING_ENABLED !== 'false';
+        if (reasoningEnabled && text && finalText) {
+            const complexity = analyzeComplexity(text);
+            if (complexity.needsReasoning) {
+                console.log(`[Orchestrator] Reasoning triggered: level=${complexity.level} score=${complexity.score} factors=${complexity.factors.join(',')}`);
+                try {
+                    // Check cache first
+                    const cached = getCachedReasoning(text);
+                    if (cached) {
+                        console.log('[Orchestrator] Reasoning cache hit');
+                        finalText += '\n\n' + formatReasoningWA(cached);
+                    } else {
+                        if (ctx.onProgress) await ctx.onProgress('🧠 w lagi mikir dalem bntar...');
+                        const reasoningResult = await performReasoning(text, {
+                            conversationHistory: conversationHistory.slice(-5),
+                            userProfile: profile?.preferences ? JSON.stringify(profile.preferences) : ''
+                        });
+                        if (reasoningResult.success && reasoningResult.conclusion) {
+                            setCachedReasoning(text, reasoningResult);
+                            finalText += '\n\n' + formatReasoningWA(reasoningResult);
+                        }
+                    }
+                } catch (reasonErr) {
+                    console.error('[Orchestrator] Reasoning failed:', reasonErr.message);
                 }
             }
         }
