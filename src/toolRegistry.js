@@ -1100,6 +1100,41 @@ const TOOLS = [
             return { success: ok, message: ok ? `Nomor ${params.is_active ? 'diaktifkan' : 'dinonaktifkan'}` : 'Nomor ga ketemu' };
         },
     },
+
+    // ── V5: Live Verification ──────────────────────────────────
+    {
+        name: 'live_verify',
+        description: 'Verify a factual claim against live internet data. Use when user asks about current prices, latest news, real-time statistics, or recent events that need fresh data.',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'The factual claim or question to verify against internet data' },
+                ai_response: { type: 'string', description: 'The AI-generated response to fact-check (optional)' },
+            },
+            required: ['query'],
+        },
+        execute: async (params) => {
+            const { aggregateSearch } = require('./searchAggregator');
+            const { verifyWithInternet } = require('./factChecker');
+            const searchResults = await aggregateSearch(params.query);
+            if (!searchResults.results.length) {
+                return { success: false, error: 'Tidak ada data ditemukan untuk verifikasi' };
+            }
+            const verification = await verifyWithInternet(
+                params.ai_response || params.query,
+                searchResults,
+                params.query,
+            );
+            return {
+                success: true,
+                verified: verification.verified,
+                confidence: verification.confidence,
+                corrections: verification.corrections,
+                updatedResponse: verification.updatedResponse,
+                sources: verification.sources,
+            };
+        },
+    },
 ];
 
 /**
