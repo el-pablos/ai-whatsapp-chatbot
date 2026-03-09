@@ -707,12 +707,58 @@ const SEARCH_KEYWORDS = ['search', 'cari', 'googling', 'cariin', 'lookup', 'brow
 const DUCKDUCKGO_API_URL = DDG_API;
 const MAX_RESULTS = 5;
 
+/**
+ * Quick search — lightweight wrapper for live verification
+ * Returns simplified results: just snippets and URLs
+ *
+ * @param {string} query - search query
+ * @param {number} timeout - timeout in ms (default 8000)
+ * @returns {Promise<{ snippets: string[], urls: string[], source: string }>}
+ */
+const quickSearch = async (query, timeout = 8000) => {
+    try {
+        const result = await Promise.race([
+            webSearch(query),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('quickSearch timeout')), timeout)),
+        ]);
+
+        const snippets = [];
+        const urls = [];
+
+        if (result.hasContent) {
+            if (result.abstract) {
+                snippets.push(result.abstract);
+                if (result.abstractURL) urls.push(result.abstractURL);
+            }
+            if (result.answer) snippets.push(result.answer);
+            if (result.relatedTopics) {
+                for (const t of result.relatedTopics.slice(0, 3)) {
+                    if (t.text) snippets.push(t.text);
+                    if (t.url) urls.push(t.url);
+                }
+            }
+            if (result.googleSnippets) {
+                for (const s of result.googleSnippets.slice(0, 3)) {
+                    if (s.snippet || s.text) snippets.push(s.snippet || s.text);
+                    if (s.url) urls.push(s.url);
+                }
+            }
+        }
+
+        return { snippets, urls, source: result.source || 'unknown' };
+    } catch (err) {
+        console.error('[WebSearch] quickSearch failed:', err.message);
+        return { snippets: [], urls: [], source: 'error' };
+    }
+};
+
 module.exports = {
     detectSearchRequest,
     noSearchGuard,
     checkExplicitSearchRequest,
     checkNeedsExternalData,
     webSearch,
+    quickSearch,
     searchDuckDuckGo,
     searchDuckDuckGoHTML,
     formatSearchResult,
