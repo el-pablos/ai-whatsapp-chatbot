@@ -307,6 +307,25 @@ const initDatabase = () => {
         CREATE INDEX IF NOT EXISTS idx_video_notes_chat ON video_notes(chat_id);
         CREATE INDEX IF NOT EXISTS idx_video_notes_video ON video_notes(video_id);
     `);
+
+    //  V5 TABLES — RAG Documents
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS rag_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            document_id TEXT NOT NULL UNIQUE,
+            chat_id TEXT,
+            source TEXT,
+            type TEXT DEFAULT 'text',
+            title TEXT,
+            original_text TEXT,
+            chunks_count INTEGER DEFAULT 0,
+            metadata TEXT DEFAULT '{}',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_rag_docs_chat ON rag_documents(chat_id);
+        CREATE INDEX IF NOT EXISTS idx_rag_docs_docid ON rag_documents(document_id);
+    `);
     
     console.log('[Database] SQLite initialized at', DB_PATH);
     return db;
@@ -1485,6 +1504,54 @@ const getVideoNotes = (chatId, limit = 10) => {
     });
 };
 
+// ═══════════════════════════════════════════════════════════
+//  RAG DOCUMENTS CRUD
+// ═══════════════════════════════════════════════════════════
+
+const saveRagDocument = (documentId, chatId, source, type, title, originalText, chunksCount, metadata) => {
+    const database = initDatabase();
+    return database.prepare(
+        `INSERT OR REPLACE INTO rag_documents (document_id, chat_id, source, type, title, original_text, chunks_count, metadata, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+    ).run(documentId, chatId || null, source || 'unknown', type || 'text',
+        title || null, originalText || null, chunksCount || 0, JSON.stringify(metadata || {}));
+};
+
+const getRagDocument = (documentId) => {
+    const database = initDatabase();
+    const row = database.prepare(
+        'SELECT * FROM rag_documents WHERE document_id = ?'
+    ).get(documentId);
+    if (row && row.metadata) row.metadata = JSON.parse(row.metadata);
+    return row || null;
+};
+
+const getRagDocuments = (chatId, limit = 20) => {
+    const database = initDatabase();
+    const rows = database.prepare(
+        'SELECT * FROM rag_documents WHERE chat_id = ? ORDER BY created_at DESC LIMIT ?'
+    ).all(chatId, limit);
+    return rows.map(r => {
+        if (r.metadata) r.metadata = JSON.parse(r.metadata);
+        return r;
+    });
+};
+
+const deleteRagDocument = (documentId) => {
+    const database = initDatabase();
+    return database.prepare(
+        'DELETE FROM rag_documents WHERE document_id = ?'
+    ).run(documentId);
+};
+
+const getRagDocumentCount = (chatId) => {
+    const database = initDatabase();
+    const row = database.prepare(
+        'SELECT COUNT(*) as count FROM rag_documents WHERE chat_id = ?'
+    ).get(chatId);
+    return row ? row.count : 0;
+};
+
 module.exports = {
     initDatabase,
     saveMessage,
@@ -1587,6 +1654,12 @@ module.exports = {
     saveVideoNote,
     getVideoNote,
     getVideoNotes,
+    // RAG documents
+    saveRagDocument,
+    getRagDocument,
+    getRagDocuments,
+    deleteRagDocument,
+    getRagDocumentCount,
     // Constants (for testing)
     RETENTION_MS,
     RETENTION_MONTHS,
