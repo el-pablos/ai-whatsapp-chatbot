@@ -24,6 +24,9 @@ const { classifyUser } = require('./userProfileHelper');
 const { getConversationHistory, saveMessage, getUserPreferences, getPreferredName, detectNicknamePreference } = require('./database');
 const { splitMessage, smartSend, WA_MESSAGE_LIMIT } = require('./messageUtils');
 const { detectPptxRequest } = require('./pptxHandler');
+const { needsVerification } = require('./liveVerifier');
+const { aggregateSearch } = require('./searchAggregator');
+const { verifyWithInternet } = require('./factChecker');
 
 // ═══════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -300,6 +303,30 @@ JANGAN hanya menjawab dengan teks. WAJIB panggil kedua tool tersebut.`,
         // ── 9. Legacy marker fallback ─────────────────────
         if (finalText) {
             finalText = await handleLegacyMarkers(finalText, mediaCtx);
+        }
+
+        // ── 9b. Live Verification ──────────────────────────
+        const liveVerifyEnabled = process.env.LIVE_VERIFY_ENABLED !== 'false';
+        if (liveVerifyEnabled && finalText && text) {
+            const verifyCheck = needsVerification(finalText, text);
+            if (verifyCheck.needsCheck) {
+                console.log(`[Orchestrator] Live verify triggered: type=${verifyCheck.checkType} query="${verifyCheck.searchQuery}"`);
+                try {
+                    if (ctx.onProgress) await ctx.onProgress('🔍 w lagi ngecek data terbaru bntar...');
+                    const searchData = await aggregateSearch(verifyCheck.searchQuery);
+                    if (searchData.results.length > 0) {
+                        const verification = await verifyWithInternet(finalText, searchData, text);
+                        if (verification.updatedResponse && verification.confidence > 0.6) {
+                            finalText = verification.updatedResponse;
+                            if (verification.sources.length > 0) {
+                                finalText += `\n\n📡 _verified: ${verification.sources.slice(0, 2).join(', ')}_`;
+                            }
+                        }
+                    }
+                } catch (verifyErr) {
+                    console.error('[Orchestrator] Live verify failed:', verifyErr.message);
+                }
+            }
         }
 
     } catch (err) {
