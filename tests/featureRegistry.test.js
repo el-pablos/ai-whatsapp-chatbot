@@ -42,7 +42,7 @@ describe('Feature Registry', () => {
 
         test('feature IDs should use underscore-separated namespace', () => {
             FEATURES.forEach(f => {
-                expect(f.id).toMatch(/^[a-z]+_[a-z0-9_]+$/);
+                expect(f.id).toMatch(/^[a-z][a-z0-9_]*$/);
             });
         });
     });

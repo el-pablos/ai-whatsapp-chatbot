@@ -27,7 +27,7 @@ const parseTimeString = (timeString) => {
     const lower = timeString.toLowerCase().trim();
 
     // "X menit lagi" / "X jam lagi"
-    const relMatch = lower.match(/(\d+)\s*(menit|jam|detik|hari)\s*(lagi|kemudian|kedepan)?/);
+    const relMatch = lower.match(/(\d+)\s*(menit|jam|detik|hari)\s+(lagi|kemudian|kedepan)/);
     if (relMatch) {
         const amount = parseInt(relMatch[1], 10);
         const unit = relMatch[2];

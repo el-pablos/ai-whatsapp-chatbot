@@ -222,7 +222,7 @@ describe('Intent Router', () => {
 
             expect(sock.sendMessage).toHaveBeenCalledTimes(1);
             const sentText = sock.sendMessage.mock.calls[0][1].text;
-            expect(sentText).toContain('Tama AI');
+            expect(sentText).toContain('ClawBot V4');
         });
     });
 
