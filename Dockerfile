@@ -41,10 +41,10 @@ RUN mkdir -p data auth_info_multi tmp
 # Environment defaults
 ENV NODE_ENV=production
 ENV HEALTH_CHECK_PORT=8008
-ENV DASHBOARD_PORT=6666
+ENV DASHBOARD_PORT=6680
 
 # Expose ports
-EXPOSE 8008 6666
+EXPOSE 8008 6680
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \

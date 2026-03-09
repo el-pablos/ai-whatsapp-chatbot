@@ -61,7 +61,7 @@ const {
     initDatabase,
 } = require('../database');
 
-const DASHBOARD_PORT = process.env.DASHBOARD_PORT || 6666;
+const DASHBOARD_PORT = process.env.DASHBOARD_PORT || 6680;
 const SESSION_HOURS = parseInt(process.env.DASHBOARD_SESSION_HOURS, 10) || 24;
 
 const app = express();

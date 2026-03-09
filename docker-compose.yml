@@ -1,15 +1,9 @@
-version: '3.8'
-
 services:
   bot:
     build: .
     container_name: tama-ai-bot
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "8008:8008"
-      - "6666:6666"
+    network_mode: host
     volumes:
       - ./data:/app/data
       - ./auth_info_multi:/app/auth_info_multi
@@ -17,7 +11,7 @@ services:
     environment:
       - NODE_ENV=production
       - HEALTH_CHECK_PORT=8008
-      - DASHBOARD_PORT=6666
+      - DASHBOARD_PORT=6680
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8008/health"]
       interval: 30s
