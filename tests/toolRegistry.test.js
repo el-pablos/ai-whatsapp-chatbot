@@ -14,8 +14,8 @@ const {
 
 describe('Tool Registry', () => {
     describe('TOOLS array', () => {
-        test('should have 64 tools', () => {
-            expect(TOOLS).toHaveLength(67);
+        test('should have 68 tools', () => {
+            expect(TOOLS).toHaveLength(68);
         });
 
         test('each tool should have required properties', () => {

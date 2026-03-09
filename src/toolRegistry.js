@@ -1179,6 +1179,27 @@ const TOOLS = [
             return { text: formatForWhatsApp(result) };
         },
     },
+    // ── V5: RAG Document Intelligence ────────────────────────
+    {
+        name: 'rag_document',
+        description: 'Query knowledge base from ingested documents. Search and answer questions based on stored documents using RAG (Retrieval-Augmented Generation).',
+        parameters: {
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'The question to answer from documents' },
+                show_sources: { type: 'boolean', description: 'Whether to show source documents in the answer' },
+            },
+            required: ['query'],
+        },
+        execute: async (params) => {
+            const { query } = require('./rag/ragPipeline');
+            const result = await query(params.query, {
+                showStats: params.show_sources !== false,
+                citations: true
+            });
+            return { text: result.answer || 'Ga nemu dokumen yang relevan.' };
+        },
+    },
 ];
 
 /**
