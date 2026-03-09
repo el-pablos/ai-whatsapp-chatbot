@@ -26,9 +26,20 @@ jest.mock('../src/database', () => ({
     initDatabase: jest.fn(),
     closeDatabase: jest.fn(),
     scheduleRetentionCleanup: jest.fn(),
+    isFeatureEnabled: jest.fn(() => true),
+    setFeatureToggle: jest.fn(),
+    getAllFeatureToggles: jest.fn(() => ({})),
+    normalizePhoneNumber: jest.fn((p) => p),
 }));
 jest.mock('../src/bugReporter', () => ({
     reportBugToOwner: jest.fn(),
+}));
+jest.mock('../src/allowlistManager', () => ({
+    addNumber: jest.fn(async () => ({ success: true })),
+    removeNumber: jest.fn(async () => true),
+    toggleNumber: jest.fn(async () => ({ success: true })),
+    getAll: jest.fn(() => []),
+    getStats: jest.fn(() => ({ total: 0, active: 0 })),
 }));
 jest.mock('../src/backupHandler', () => ({
     runBackupNow: jest.fn(async () => {}),
@@ -102,6 +113,8 @@ describe('Intent Router', () => {
         clearConversation.mockImplementation(() => {});
         getStats.mockReturnValue({ totalMessages: 100, totalUsers: 5, totalChats: 10 });
         isOwner.mockImplementation((jid) => jid === '6281234567890@s.whatsapp.net');
+        const { isFeatureEnabled: ife } = require('../src/database');
+        ife.mockReturnValue(true);
         orchestrate.mockResolvedValue({ text: 'AI response' });
         const { smartSend: ss } = require('../src/messageUtils');
         ss.mockImplementation(async () => {});

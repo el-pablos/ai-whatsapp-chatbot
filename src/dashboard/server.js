@@ -499,7 +499,7 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
 //  SPA CATCH-ALL: serve index.html for non-API routes
 // ═══════════════════════════════════════════════════════════
 
-app.get('*', (req, res) => {
+app.get('/{*splat}', (req, res) => {
     if (req.path.startsWith('/api')) {
         return res.status(404).json({ success: false, error: 'API endpoint not found' });
     }
