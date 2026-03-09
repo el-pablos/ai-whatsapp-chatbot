@@ -69,31 +69,6 @@ describe('Database Module - User Preferences', () => {
             expect(OWNER_NUMBERS.some(num => num.includes('82210819939'))).toBe(true);
         });
 
-        it('should contain the second owner number', () => {
-            expect(OWNER_NUMBERS.some(num => num.includes('85817378442'))).toBe(true);
-        });
-
-    });
-
-    // ═══════════════════════════════════════════════════════════
-    // Owner Detection — second owner (6285817378442)
-    // ═══════════════════════════════════════════════════════════
-    describe('isOwner - second owner (6285817378442)', () => {
-
-        it('should return true for second owner with country code JID', () => {
-            expect(isOwner('6285817378442@s.whatsapp.net')).toBe(true);
-        });
-
-        it('should return true for second owner with 0 prefix', () => {
-            expect(isOwner('085817378442@s.whatsapp.net')).toBe(true);
-        });
-
-        it('should return true for second owner raw digits', () => {
-            expect(isOwner('6285817378442')).toBe(true);
-            expect(isOwner('085817378442')).toBe(true);
-            expect(isOwner('85817378442')).toBe(true);
-        });
-
     });
 
     // ═══════════════════════════════════════════════════════════

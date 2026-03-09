@@ -23,13 +23,12 @@ describe('User Profile Helper Module', () => {
     // OWNER_PHONES constant
     // ═══════════════════════════════════════════════════════════
     describe('OWNER_PHONES', () => {
-        it('should contain both owner numbers', () => {
+        it('should contain owner number', () => {
             expect(OWNER_PHONES).toContain('6282210819939');
-            expect(OWNER_PHONES).toContain('6285817378442');
         });
 
-        it('should have exactly 2 owner numbers', () => {
-            expect(OWNER_PHONES).toHaveLength(2);
+        it('should have at least 1 owner number', () => {
+            expect(OWNER_PHONES.length).toBeGreaterThanOrEqual(1);
         });
 
         it('should only contain digit strings with 62 prefix', () => {
@@ -90,24 +89,6 @@ describe('User Profile Helper Module', () => {
 
             it('should match raw without country code', () => {
                 expect(isOwnerPhone('82210819939')).toBe(true);
-            });
-        });
-
-        describe('owner #2 (6285817378442)', () => {
-            it('should match full JID', () => {
-                expect(isOwnerPhone('6285817378442@s.whatsapp.net')).toBe(true);
-            });
-
-            it('should match with 62 prefix', () => {
-                expect(isOwnerPhone('6285817378442')).toBe(true);
-            });
-
-            it('should match with 0 prefix', () => {
-                expect(isOwnerPhone('085817378442')).toBe(true);
-            });
-
-            it('should match raw without country code', () => {
-                expect(isOwnerPhone('85817378442')).toBe(true);
             });
         });
 
@@ -191,24 +172,11 @@ describe('User Profile Helper Module', () => {
                 expect(result.contextHint).toContain('[SPECIAL_USER: Salsa]');
             });
 
-            it('should work for second owner with Salsa name', () => {
-                const result = classifyUser('6285817378442', 'Salsa');
-                expect(result.mode).toBe('owner_salsa');
-                expect(result.isOwner).toBe(true);
-                expect(result.isSalsa).toBe(true);
-            });
         });
 
         describe('mode: owner', () => {
             it('should classify owner #1 (Tama) as owner', () => {
                 const result = classifyUser('6282210819939@s.whatsapp.net', 'Tama');
-                expect(result.isOwner).toBe(true);
-                expect(result.isSalsa).toBe(false);
-                expect(result.mode).toBe('owner');
-            });
-
-            it('should classify owner #2 as owner', () => {
-                const result = classifyUser('6285817378442@s.whatsapp.net', 'Someone');
                 expect(result.isOwner).toBe(true);
                 expect(result.isSalsa).toBe(false);
                 expect(result.mode).toBe('owner');

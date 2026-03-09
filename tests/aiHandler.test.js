@@ -314,18 +314,6 @@ describe('AI Handler Module', () => {
             expect(isOwnerNumber('6282210819939@s.whatsapp.net')).toBe(true);
         });
 
-        it('should return true for owner #2 (6285817378442)', () => {
-            expect(isOwnerNumber('6285817378442')).toBe(true);
-        });
-
-        it('should return true for owner #2 with 0 prefix', () => {
-            expect(isOwnerNumber('085817378442')).toBe(true);
-        });
-
-        it('should return true for owner #2 JID format', () => {
-            expect(isOwnerNumber('6285817378442@s.whatsapp.net')).toBe(true);
-        });
-
         it('should return false for non-owner number', () => {
             expect(isOwnerNumber('6281234567890')).toBe(false);
             expect(isOwnerNumber('6289999999999')).toBe(false);
@@ -341,11 +329,9 @@ describe('AI Handler Module', () => {
 
     describe('OWNER_NUMBERS', () => {
 
-        it('should contain both owner phone numbers', () => {
+        it('should contain owner phone numbers', () => {
             expect(OWNER_NUMBERS).toContain('6282210819939');
             expect(OWNER_NUMBERS).toContain('082210819939');
-            expect(OWNER_NUMBERS).toContain('6285817378442');
-            expect(OWNER_NUMBERS).toContain('085817378442');
         });
 
     });
