@@ -687,30 +687,19 @@ const closeDatabase = () => {
 // ═══════════════════════════════════════════════════════════
 
 /**
- * Owner phone numbers (can have multiple)
- * Format: without country code prefix variations
+ * Owner phone numbers — delegates to userProfileHelper for single source of truth
  */
-const OWNER_NUMBERS = [
-    '6282210819939',  // Tama - With country code
-    '082210819939',   // Tama - Without country code
-    '6285817378442',  // Owner 2 - With country code
-    '085817378442',   // Owner 2 - Without country code
-];
+const { OWNER_PHONES: _OWNER_PHONES, isOwnerPhone: _isOwnerPhone } = require('./userProfileHelper');
+
+// Keep OWNER_NUMBERS export for backward compat (same as OWNER_PHONES)
+const OWNER_NUMBERS = _OWNER_PHONES;
 
 /**
  * Check if a JID belongs to the owner
  * @param {string} jid - User's JID (e.g., 6282210819939@s.whatsapp.net)
  * @returns {boolean}
  */
-const isOwner = (jid) => {
-    if (!jid) return false;
-    const phoneNumber = jid.replace('@s.whatsapp.net', '').replace('@g.us', '');
-    return OWNER_NUMBERS.some(ownerNum => 
-        phoneNumber === ownerNum || 
-        phoneNumber.endsWith(ownerNum.replace(/^0/, '')) ||
-        ownerNum.endsWith(phoneNumber.replace(/^62/, ''))
-    );
-};
+const isOwner = (jid) => _isOwnerPhone(jid);
 
 /**
  * Get user preferences
