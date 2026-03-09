@@ -77,89 +77,22 @@ const startHealthCheckServer = () => {
             });
         });
 
-        // Dashboard endpoint dengan stats lengkap
+        // Dashboard endpoint — SECURED: moved to Dashboard Admin server (port 6666)
+        // Only show a redirect notice here
         app.get('/dashboard', (req, res) => {
-            try {
-                const memUsage = process.memoryUsage();
-                const uptime = Math.floor((Date.now() - startTime) / 1000);
-                const stats = getStats();
-                const users = getAllUsers();
-                
-                res.status(200).json({
-                    status: 'ok',
-                    bot: {
-                        name: 'Tama AI Bot',
-                        version: pkg.version,
-                        author: 'Tama El Pablo',
-                        contact: {
-                            whatsapp: '082210819939',
-                            instagram: 'tam.aspx'
-                        }
-                    },
-                    server: {
-                        uptime: uptime,
-                        uptimeFormatted: formatUptime(uptime),
-                        memory: {
-                            heapUsed: Math.round(memUsage.heapUsed / 1024 / 1024) + ' MB',
-                            heapTotal: Math.round(memUsage.heapTotal / 1024 / 1024) + ' MB',
-                            rss: Math.round(memUsage.rss / 1024 / 1024) + ' MB'
-                        },
-                        pid: process.pid,
-                        nodeVersion: process.version
-                    },
-                    database: {
-                        totalMessages: stats.totalMessages,
-                        activeMessages: stats.activeMessages,
-                        expiredMessages: stats.expiredMessages,
-                        totalChats: stats.totalChats,
-                        activeChats: stats.activeChats,
-                        totalUsers: stats.totalUsers,
-                        sessionExpiryHours: stats.sessionExpiryHours
-                    },
-                    users: users.map(u => ({
-                        phone: u.phoneNumber,
-                        name: u.name,
-                        messageCount: u.messageCount,
-                        lastSeen: new Date(u.lastSeen).toISOString(),
-                        isActive: u.isActive,
-                        isGroup: u.isGroup
-                    })),
-                    timestamp: new Date().toISOString()
-                });
-            } catch (error) {
-                console.error('[Dashboard] Error:', error.message);
-                res.status(500).json({
-                    status: 'error',
-                    message: 'Failed to load dashboard data'
-                });
-            }
+            const dashPort = process.env.DASHBOARD_PORT || 6666;
+            res.status(301).json({
+                status: 'moved',
+                message: `Dashboard sudah pindah ke port ${dashPort}. Akses lewat http://localhost:${dashPort}`,
+            });
         });
 
-        // Users list endpoint (phone numbers)
+        // Users list — SECURED: moved to Dashboard Admin server
         app.get('/users', (req, res) => {
-            try {
-                const users = getAllUsers();
-                
-                res.status(200).json({
-                    status: 'ok',
-                    count: users.length,
-                    users: users.map(u => ({
-                        phone: u.phoneNumber,
-                        name: u.name,
-                        messageCount: u.messageCount,
-                        firstSeen: new Date(u.firstSeen).toISOString(),
-                        lastSeen: new Date(u.lastSeen).toISOString(),
-                        isActive: u.isActive,
-                        isGroup: u.isGroup
-                    }))
-                });
-            } catch (error) {
-                console.error('[Users] Error:', error.message);
-                res.status(500).json({
-                    status: 'error',
-                    message: 'Failed to load users'
-                });
-            }
+            res.status(403).json({
+                status: 'forbidden',
+                message: 'Endpoint ini sudah dipindah ke Dashboard Admin (port 6666) yang ter-autentikasi.',
+            });
         });
 
         // Capabilities endpoint — dependency status check
@@ -177,41 +110,20 @@ const startHealthCheckServer = () => {
             }
         });
 
-        // Stats endpoint
+        // Stats — SECURED: moved to Dashboard Admin server
         app.get('/stats', (req, res) => {
-            try {
-                const stats = getStats();
-                
-                res.status(200).json({
-                    status: 'ok',
-                    ...stats
-                });
-            } catch (error) {
-                console.error('[Stats] Error:', error.message);
-                res.status(500).json({
-                    status: 'error',
-                    message: 'Failed to load stats'
-                });
-            }
+            res.status(403).json({
+                status: 'forbidden',
+                message: 'Endpoint ini sudah dipindah ke Dashboard Admin (port 6666) yang ter-autentikasi.',
+            });
         });
 
-        // Cleanup endpoint (trigger manual cleanup of expired sessions)
+        // Cleanup — SECURED: moved to Dashboard Admin server
         app.post('/cleanup', (req, res) => {
-            try {
-                const result = cleanupExpiredSessions();
-                
-                res.status(200).json({
-                    status: 'ok',
-                    message: `Cleaned up ${result.deletedCount} expired messages`,
-                    ...result
-                });
-            } catch (error) {
-                console.error('[Cleanup] Error:', error.message);
-                res.status(500).json({
-                    status: 'error',
-                    message: 'Failed to cleanup'
-                });
-            }
+            res.status(403).json({
+                status: 'forbidden',
+                message: 'Cleanup sekarang hanya bisa lewat Dashboard Admin (port 6666).',
+            });
         });
 
         // 404 handler
