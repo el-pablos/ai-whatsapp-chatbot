@@ -461,8 +461,10 @@ const runAutoSetup = () => {
     console.log('╚═══════════════════════════════════════════════════════════╝');
 };
 
-// Execute immediately when required
-runAutoSetup();
+// Execute immediately when required (skip in test environment)
+if (process.env.NODE_ENV !== 'test') {
+    runAutoSetup();
+}
 
 module.exports = {
     runAutoSetup,
