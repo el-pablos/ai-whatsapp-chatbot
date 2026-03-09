@@ -59,6 +59,7 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.6.2",
     "clsx": "^2.1.1",
+    "compromise": "^14.15.0",
     "cookie-parser": "^1.4.7",
     "decompress": "^4.2.1",
     "decompress-tarbz2": "^4.1.1",
@@ -73,6 +74,7 @@
     "lucide-react": "^0.577.0",
     "mammoth": "^1.11.0",
     "mathjs": "^15.1.1",
+    "natural": "^8.1.1",
     "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "node-unrar-js": "^2.0.2",
@@ -90,6 +92,9 @@
     "tailwind-merge": "^3.5.0",
     "tar": "^7.5.7",
     "textract": "^2.5.0"
+  },
+  "optionalDependencies": {
+    "hnswlib-node": "^3.0.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.1",
