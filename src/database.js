@@ -92,6 +92,96 @@ const initDatabase = () => {
         
         CREATE INDEX IF NOT EXISTS idx_user_preferences_jid ON user_preferences(jid);
     `);
+
+    // Long-term memory table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS long_term_memory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            category TEXT NOT NULL DEFAULT 'fact',
+            key TEXT NOT NULL,
+            value TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_ltm_user ON long_term_memory(user_id);
+        CREATE INDEX IF NOT EXISTS idx_ltm_category ON long_term_memory(user_id, category);
+    `);
+
+    // Reminders table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            message TEXT NOT NULL,
+            remind_at DATETIME NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_reminders_user ON reminders(user_id);
+        CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status, remind_at);
+    `);
+
+    // Notes table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT 'note',
+            title TEXT,
+            content TEXT NOT NULL,
+            status TEXT DEFAULT 'active',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_notes_user ON notes(user_id);
+        CREATE INDEX IF NOT EXISTS idx_notes_type ON notes(user_id, type);
+    `);
+
+    // Polls table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS polls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id TEXT NOT NULL,
+            creator_id TEXT NOT NULL,
+            question TEXT NOT NULL,
+            options TEXT NOT NULL,
+            votes TEXT DEFAULT '{}',
+            status TEXT DEFAULT 'open',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            expires_at DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS idx_polls_chat ON polls(chat_id, status);
+    `);
+
+    // RSS feeds table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS rss_feeds (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            url TEXT NOT NULL,
+            title TEXT,
+            last_checked DATETIME,
+            last_entry_id TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_rss_user ON rss_feeds(user_id);
+    `);
+
+    // Scheduled messages table
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS scheduled_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            creator_id TEXT NOT NULL,
+            target_chat TEXT NOT NULL,
+            message TEXT NOT NULL,
+            scheduled_at DATETIME NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_sched_status ON scheduled_messages(status, scheduled_at);
+    `);
     
     console.log('[Database] SQLite initialized at', DB_PATH);
     return db;
@@ -632,6 +722,269 @@ const detectNicknamePreference = (jid, message) => {
     return null;
 };
 
+// ═══════════════════════════════════════════════════════════
+//  LONG-TERM MEMORY CRUD
+// ═══════════════════════════════════════════════════════════
+
+const saveMemory = (userId, category, key, value) => {
+    const database = initDatabase();
+    const existing = database.prepare(
+        'SELECT id FROM long_term_memory WHERE user_id = ? AND key = ?'
+    ).get(userId, key);
+    if (existing) {
+        database.prepare(
+            'UPDATE long_term_memory SET value = ?, category = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).run(value, category, existing.id);
+        return { id: existing.id, updated: true };
+    }
+    const result = database.prepare(
+        'INSERT INTO long_term_memory (user_id, category, key, value) VALUES (?, ?, ?, ?)'
+    ).run(userId, category, key, value);
+    return { id: result.lastInsertRowid, updated: false };
+};
+
+const searchMemory = (userId, query) => {
+    const database = initDatabase();
+    return database.prepare(
+        "SELECT * FROM long_term_memory WHERE user_id = ? AND (key LIKE ? OR value LIKE ?) ORDER BY updated_at DESC LIMIT 20"
+    ).all(userId, `%${query}%`, `%${query}%`);
+};
+
+const getMemories = (userId, category = null) => {
+    const database = initDatabase();
+    if (category) {
+        return database.prepare(
+            'SELECT * FROM long_term_memory WHERE user_id = ? AND category = ? ORDER BY updated_at DESC'
+        ).all(userId, category);
+    }
+    return database.prepare(
+        'SELECT * FROM long_term_memory WHERE user_id = ? ORDER BY updated_at DESC'
+    ).all(userId);
+};
+
+const deleteMemory = (userId, key) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'DELETE FROM long_term_memory WHERE user_id = ? AND key = ?'
+    ).run(userId, key);
+    return result.changes > 0;
+};
+
+// ═══════════════════════════════════════════════════════════
+//  REMINDERS CRUD
+// ═══════════════════════════════════════════════════════════
+
+const createReminder = (userId, chatId, message, remindAt) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'INSERT INTO reminders (user_id, chat_id, message, remind_at) VALUES (?, ?, ?, ?)'
+    ).run(userId, chatId, message, remindAt);
+    return { id: result.lastInsertRowid };
+};
+
+const getPendingReminders = () => {
+    const database = initDatabase();
+    return database.prepare(
+        "SELECT * FROM reminders WHERE status = 'pending' AND remind_at <= datetime('now')"
+    ).all();
+};
+
+const getUserReminders = (userId) => {
+    const database = initDatabase();
+    return database.prepare(
+        "SELECT * FROM reminders WHERE user_id = ? AND status = 'pending' ORDER BY remind_at ASC"
+    ).all(userId);
+};
+
+const markReminderDone = (id) => {
+    const database = initDatabase();
+    database.prepare("UPDATE reminders SET status = 'done' WHERE id = ?").run(id);
+};
+
+const deleteReminder = (userId, id) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'DELETE FROM reminders WHERE user_id = ? AND id = ?'
+    ).run(userId, id);
+    return result.changes > 0;
+};
+
+// ═══════════════════════════════════════════════════════════
+//  NOTES CRUD
+// ═══════════════════════════════════════════════════════════
+
+const createNote = (userId, type, title, content) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'INSERT INTO notes (user_id, type, title, content) VALUES (?, ?, ?, ?)'
+    ).run(userId, type, title, content);
+    return { id: result.lastInsertRowid };
+};
+
+const getUserNotes = (userId, type = null) => {
+    const database = initDatabase();
+    if (type) {
+        return database.prepare(
+            'SELECT * FROM notes WHERE user_id = ? AND type = ? ORDER BY created_at DESC'
+        ).all(userId, type);
+    }
+    return database.prepare(
+        'SELECT * FROM notes WHERE user_id = ? ORDER BY created_at DESC'
+    ).all(userId);
+};
+
+const searchNotes = (userId, query) => {
+    const database = initDatabase();
+    return database.prepare(
+        "SELECT * FROM notes WHERE user_id = ? AND (title LIKE ? OR content LIKE ?) ORDER BY created_at DESC"
+    ).all(userId, `%${query}%`, `%${query}%`);
+};
+
+const updateNoteStatus = (userId, id, status) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'UPDATE notes SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND id = ?'
+    ).run(status, userId, id);
+    return result.changes > 0;
+};
+
+const deleteNote = (userId, id) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'DELETE FROM notes WHERE user_id = ? AND id = ?'
+    ).run(userId, id);
+    return result.changes > 0;
+};
+
+// ═══════════════════════════════════════════════════════════
+//  POLLS CRUD
+// ═══════════════════════════════════════════════════════════
+
+const createPoll = (chatId, creatorId, question, options) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'INSERT INTO polls (chat_id, creator_id, question, options) VALUES (?, ?, ?, ?)'
+    ).run(chatId, creatorId, question, JSON.stringify(options));
+    return { id: result.lastInsertRowid };
+};
+
+const getPoll = (pollId) => {
+    const database = initDatabase();
+    const row = database.prepare('SELECT * FROM polls WHERE id = ?').get(pollId);
+    if (!row) return null;
+    row.options = JSON.parse(row.options);
+    row.votes = JSON.parse(row.votes || '{}');
+    return row;
+};
+
+const getActivePoll = (chatId) => {
+    const database = initDatabase();
+    const row = database.prepare(
+        "SELECT * FROM polls WHERE chat_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1"
+    ).get(chatId);
+    if (!row) return null;
+    row.options = JSON.parse(row.options);
+    row.votes = JSON.parse(row.votes || '{}');
+    return row;
+};
+
+const votePoll = (pollId, userId, optionIndex) => {
+    const database = initDatabase();
+    const poll = getPoll(pollId);
+    if (!poll || poll.status !== 'open') return { success: false, error: 'Poll not found or closed' };
+    if (optionIndex < 0 || optionIndex >= poll.options.length) return { success: false, error: 'Invalid option' };
+    const votes = poll.votes;
+    votes[userId] = optionIndex;
+    database.prepare('UPDATE polls SET votes = ? WHERE id = ?').run(JSON.stringify(votes), pollId);
+    return { success: true, option: poll.options[optionIndex] };
+};
+
+const closePoll = (pollId) => {
+    const database = initDatabase();
+    database.prepare("UPDATE polls SET status = 'closed' WHERE id = ?").run(pollId);
+};
+
+const getPollResults = (pollId) => {
+    const poll = getPoll(pollId);
+    if (!poll) return null;
+    const tally = {};
+    poll.options.forEach((_, i) => { tally[i] = 0; });
+    Object.values(poll.votes).forEach(idx => { tally[idx] = (tally[idx] || 0) + 1; });
+    const totalVotes = Object.values(tally).reduce((a, b) => a + b, 0);
+    return {
+        question: poll.question,
+        options: poll.options,
+        tally,
+        totalVotes,
+        status: poll.status,
+    };
+};
+
+// ═══════════════════════════════════════════════════════════
+//  RSS FEEDS CRUD
+// ═══════════════════════════════════════════════════════════
+
+const addRssFeed = (userId, url, title) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'INSERT INTO rss_feeds (user_id, url, title) VALUES (?, ?, ?)'
+    ).run(userId, url, title || null);
+    return { id: result.lastInsertRowid };
+};
+
+const getUserFeeds = (userId) => {
+    const database = initDatabase();
+    return database.prepare(
+        'SELECT * FROM rss_feeds WHERE user_id = ? ORDER BY created_at DESC'
+    ).all(userId);
+};
+
+const updateFeedChecked = (feedId, lastEntryId) => {
+    const database = initDatabase();
+    database.prepare(
+        'UPDATE rss_feeds SET last_checked = CURRENT_TIMESTAMP, last_entry_id = ? WHERE id = ?'
+    ).run(lastEntryId, feedId);
+};
+
+const removeRssFeed = (userId, feedId) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'DELETE FROM rss_feeds WHERE user_id = ? AND id = ?'
+    ).run(userId, feedId);
+    return result.changes > 0;
+};
+
+// ═══════════════════════════════════════════════════════════
+//  SCHEDULED MESSAGES CRUD
+// ═══════════════════════════════════════════════════════════
+
+const createScheduledMessage = (creatorId, targetChat, message, scheduledAt) => {
+    const database = initDatabase();
+    const result = database.prepare(
+        'INSERT INTO scheduled_messages (creator_id, target_chat, message, scheduled_at) VALUES (?, ?, ?, ?)'
+    ).run(creatorId, targetChat, message, scheduledAt);
+    return { id: result.lastInsertRowid };
+};
+
+const getPendingScheduledMessages = () => {
+    const database = initDatabase();
+    return database.prepare(
+        "SELECT * FROM scheduled_messages WHERE status = 'pending' AND scheduled_at <= datetime('now')"
+    ).all();
+};
+
+const markScheduledMessageSent = (id) => {
+    const database = initDatabase();
+    database.prepare("UPDATE scheduled_messages SET status = 'sent' WHERE id = ?").run(id);
+};
+
+const getUserScheduledMessages = (userId) => {
+    const database = initDatabase();
+    return database.prepare(
+        "SELECT * FROM scheduled_messages WHERE creator_id = ? AND status = 'pending' ORDER BY scheduled_at ASC"
+    ).all(userId);
+};
+
 module.exports = {
     initDatabase,
     saveMessage,
@@ -653,6 +1006,40 @@ module.exports = {
     getPreferredName,
     detectNicknamePreference,
     OWNER_NUMBERS,
+    // Long-term memory
+    saveMemory,
+    searchMemory,
+    getMemories,
+    deleteMemory,
+    // Reminders
+    createReminder,
+    getPendingReminders,
+    getUserReminders,
+    markReminderDone,
+    deleteReminder,
+    // Notes
+    createNote,
+    getUserNotes,
+    searchNotes,
+    updateNoteStatus,
+    deleteNote,
+    // Polls
+    createPoll,
+    getPoll,
+    getActivePoll,
+    votePoll,
+    closePoll,
+    getPollResults,
+    // RSS feeds
+    addRssFeed,
+    getUserFeeds,
+    updateFeedChecked,
+    removeRssFeed,
+    // Scheduled messages
+    createScheduledMessage,
+    getPendingScheduledMessages,
+    markScheduledMessageSent,
+    getUserScheduledMessages,
     // Constants (for testing)
     RETENTION_MS,
     RETENTION_MONTHS,
