@@ -145,6 +145,9 @@ const performReasoning = async (query, context = {}) => {
  * Parse raw AI response into structured reasoning
  */
 const parseReasoningResponse = (rawResponse) => {
+    if (!rawResponse || typeof rawResponse !== 'string') {
+        return { steps: [], conclusion: '', confidence: 0 };
+    }
     const lines = rawResponse.split('\n');
     const steps = [];
     let conclusion = '';
