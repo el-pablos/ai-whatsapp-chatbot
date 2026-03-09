@@ -28,6 +28,17 @@ const { reportBugToOwner } = require('./bugReporter');
 const { isOwner } = require('./database');
 const { runBackupNow } = require('./backupHandler');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { parseTranslateCommand, listLanguages } = require('./translateHandler');
+const { parseGifCommand } = require('./gifHandler');
+const { parseQRCommand, createQRResponse } = require('./qrCodeHandler');
+const { parsePDFCommand } = require('./pdfEditorHandler');
+const { parsePollCommand, parseVoteCommand, createPoll: pollCreate, votePoll: pollVote, closePoll: pollClose, showPollResults } = require('./pollHandler');
+const { parseCalcCommand, calculateExpression, convertUnit, convertCurrency, formatCalcResult } = require('./calculatorHandler');
+const { parseRssCommand, subscribeFeed, listFeeds, unsubscribeFeed, checkUserFeeds, formatFeedUpdates } = require('./rssHandler');
+const { parseImagineCommand, generateImage, downloadImageBuffer, isImageGenAvailable } = require('./imageGenHandler');
+const { parseScheduleCommand, scheduleMessage, listScheduledMessages } = require('./scheduledMessageHandler');
+const { listReminders } = require('./reminderHandler');
+const { listNotes, listTodos } = require('./noteHandler');
 
 // ═══════════════════════════════════════════════════════════
 //  FAST-PATH COMMANDS (no AI needed)
@@ -48,7 +59,7 @@ const FAST_COMMANDS = {
     },
     '/help': async () => {
         return {
-            text: `🤖 *Tama AI v3.0*\n\n*Chat:*\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w analisis\n• Kirim voice note - w transcribe & jawab\n• Kirim lokasi - w tau dimana lu\n• Reply chat/lampiran - w paham konteks\n• 🌐 *Internet* - w bisa cari info terbaru!\n\n*File:*\n📄 Minta w buatin file apa aja\n📑 Kirim dokumen - w baca & analisis (70+ format)\n\n*Media:*\n🎨 stiker/sticker → bikin stiker\n🎵 link youtube → download MP3/MP4\n📸 kirim foto → analisis gambar\n\n*Entertainment:*\n🔮 tarot → baca kartu tarot\n😊 curhat → baca mood lo\n🔍 search/cari → cari di internet\n\n*Kalender:*\n📅 /kalender /libur /zodiak /ultah /today\n\n*Admin:*\n• /clear - hapus history\n• /stats - statistik\n• /backup - backup data\n\n💡 Chat aja natural, w ngerti kok 😎`,
+            text: `🤖 *ClawBot V4.0*\n\n*Chat:*\n• Chat biasa - w bales pake gaya Tama\n• Kirim gambar - w analisis\n• Kirim voice note - w transcribe & jawab\n• Kirim lokasi - w tau dimana lu\n• Reply chat/lampiran - w paham konteks\n• 🌐 Internet - w bisa cari info terbaru!\n\n*File:*\n📄 Minta w buatin file apa aja\n📑 Kirim dokumen - w baca & analisis (70+ format)\n📊 /pdf info, /pdf extract 1,3\n\n*Media:*\n🎨 stiker/sticker → bikin stiker\n🎵 link youtube → download MP3/MP4\n📸 kirim foto → analisis gambar\n🎭 /gif [query] → cari GIF\n📱 /qr [text/url] → generate QR code\n🎨 /imagine [prompt] → generate gambar AI\n\n*Produktivitas:*\n⏰ "ingetin gw...", /reminder list\n📝 /notes list, /todo list\n🌐 /translate [lang] [text]\n🧮 /calc [ekspresi]\n📅 /kalender /libur /zodiak /ultah /today\n\n*Social:*\n📊 /poll [pertanyaan] | [opsi1] | [opsi2]\n/vote [nomor]\n📰 /rss add [url], /rss list, /rss check\n⏰ /schedule [waktu] | [pesan]\n\n*Entertainment:*\n🔮 tarot → baca kartu tarot\n😊 curhat → baca mood lo\n🔍 search/cari → cari di internet\n\n*Admin:*\n• /clear - hapus history\n• /stats - statistik\n• /backup - backup data\n\n💡 Chat aja natural, w ngerti kok 😎`,
         };
     },
     '/bantuan': async () => FAST_COMMANDS['/help'](),
@@ -85,6 +96,107 @@ const PREFIX_COMMANDS = {
         } catch (err) {
             return { text: `gagal backup: ${err.message}` };
         }
+    },
+    '/translate': async (args, ctx) => {
+        if (!args) return { text: listLanguages() };
+        const parsed = parseTranslateCommand('/translate ' + args);
+        if (!parsed) return { text: 'format: /translate [kode bahasa] [teks]\ncontoh: /translate en halo apa kabar\n\nketik /translate buat lihat daftar bahasa' };
+        // Akan di-handle orchestrator via AI tool
+        return null; // fallthrough ke orchestrator
+    },
+    '/gif': async (args, ctx) => {
+        if (!args) return { text: 'format: /gif [kata kunci]\ncontoh: /gif kucing lucu' };
+        return null; // fallthrough ke orchestrator
+    },
+    '/qr': async (args, ctx) => {
+        if (!args) return { text: 'format: /qr [teks atau url]\ncontoh: /qr https://example.com' };
+        const result = await createQRResponse(args);
+        return { qrImage: result };
+    },
+    '/pdf': async (args, ctx) => {
+        if (!args) return { text: 'format:\n/pdf info — info PDF\n/pdf extract 1,3,5 — extract halaman' };
+        return null; // needs document context — fallthrough
+    },
+    '/poll': async (args, ctx) => {
+        if (!args) return { text: 'format: /poll [pertanyaan] | [opsi1] | [opsi2] | ...\ncontoh: /poll Makan apa? | Nasi goreng | Mie | Sate\n\n/poll close — tutup poll\n/poll results — lihat hasil' };
+        const parsed = parsePollCommand('/poll ' + args);
+        if (!parsed) return { text: 'format ga valid bro' };
+        if (parsed.action === 'close') return { text: pollClose(ctx.chatId, ctx.senderId || ctx.chatId, process.env.OWNER_JID || '').message };
+        if (parsed.action === 'results') return { text: showPollResults(ctx.chatId) };
+        if (parsed.action === 'create') return { text: pollCreate(ctx.chatId, ctx.senderId || ctx.chatId, parsed.question, parsed.options).message };
+        return { text: 'command poll ga valid' };
+    },
+    '/vote': async (args, ctx) => {
+        const num = parseInt(args, 10);
+        if (!num) return { text: 'format: /vote [nomor]\ncontoh: /vote 1' };
+        return { text: pollVote(ctx.chatId, ctx.senderId || ctx.chatId, num).message };
+    },
+    '/calc': async (args) => {
+        if (!args) return { text: 'format: /calc [ekspresi]\ncontoh: /calc sqrt(144)\n/calc 100 USD to IDR\n/calc 10 km to mile' };
+        const parsed = parseCalcCommand('/calc ' + args);
+        if (!parsed) return { text: 'ekspresi ga valid bro' };
+        if (parsed.type === 'currency') {
+            const r = await convertCurrency(parsed.params.amount, parsed.params.from, parsed.params.to);
+            return { text: formatCalcResult(r) };
+        }
+        if (parsed.type === 'unit') {
+            const r = convertUnit(parsed.params.value, parsed.params.from, parsed.params.to);
+            return { text: formatCalcResult(r) };
+        }
+        return { text: formatCalcResult(calculateExpression(parsed.params.expression)) };
+    },
+    '/hitung': async (args) => PREFIX_COMMANDS['/calc'](args),
+    '/rss': async (args, ctx) => {
+        const userId = ctx.senderId || ctx.chatId;
+        if (!args) return { text: listFeeds(userId) };
+        const parsed = parseRssCommand('/rss ' + args);
+        if (!parsed) return { text: 'format:\n/rss add [url] [label] — subscribe\n/rss list — lihat feeds\n/rss remove [id] — unsubscribe\n/rss check — cek update' };
+        if (parsed.action === 'list') return { text: listFeeds(userId) };
+        if (parsed.action === 'add') {
+            const r = await subscribeFeed(userId, parsed.url, parsed.label);
+            return { text: r.message };
+        }
+        if (parsed.action === 'remove') {
+            const r = unsubscribeFeed(userId, parsed.feedId);
+            return { text: r.message };
+        }
+        if (parsed.action === 'check') {
+            const updates = await checkUserFeeds(userId);
+            const formatted = formatFeedUpdates(updates);
+            return { text: formatted || 'Ga ada artikel baru dari feed kamu 📰' };
+        }
+        return { text: 'command rss ga valid' };
+    },
+    '/feeds': async (args, ctx) => PREFIX_COMMANDS['/rss'](args, ctx),
+    '/imagine': async (args, ctx) => {
+        if (!args) return { text: 'format: /imagine [deskripsi gambar]\ncontoh: /imagine kucing bermain gitar' };
+        if (!isImageGenAvailable()) return { text: 'Image gen belum aktif (OPENAI_API_KEY not set) 🎨' };
+        return null; // fallthrough ke orchestrator for proper handling
+    },
+    '/schedule': async (args, ctx) => {
+        const userId = ctx.senderId || ctx.chatId;
+        if (!args) return { text: 'format: /schedule [waktu] | [pesan]\ncontoh: /schedule besok jam 10 | selamat pagi!\n/schedule list' };
+        const parsed = parseScheduleCommand('/schedule ' + args);
+        if (!parsed) return { text: 'format ga valid bro' };
+        if (parsed.action === 'list') return { text: listScheduledMessages(userId) };
+        if (parsed.action === 'create') {
+            const target = parsed.target || ctx.chatId;
+            const r = scheduleMessage(userId, target, parsed.message, parsed.time, ctx.isOwner || false);
+            return { text: r.message };
+        }
+        return { text: 'command schedule ga valid' };
+    },
+    '/reminder': async (args, ctx) => {
+        if (!args || args.toLowerCase() === 'list') return { text: listReminders(ctx.senderId || ctx.chatId) };
+        return null; // fallthrough ke orchestrator
+    },
+    '/notes': async (args, ctx) => {
+        if (!args || args.toLowerCase() === 'list') return { text: listNotes(ctx.senderId || ctx.chatId) };
+        return null;
+    },
+    '/todo': async (args, ctx) => {
+        if (!args || args.toLowerCase() === 'list') return { text: listTodos(ctx.senderId || ctx.chatId) };
+        return null;
     },
 };
 
@@ -135,7 +247,15 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
                     }, { quoted: ctx.rawMsg });
                     return;
                 }
-                const result = await handler(args, { chatId, sock, isOwner: isOwner(chatId) });
+                const result = await handler(args, { chatId, sock, isOwner: isOwner(chatId), senderId: normalizedMsg.senderId });
+                if (result === null) break; // fallthrough to orchestrator
+                if (result?.qrImage) {
+                    await sock.sendMessage(chatId, {
+                        image: result.qrImage.buffer,
+                        caption: result.qrImage.caption,
+                    }, { quoted: ctx.rawMsg });
+                    return;
+                }
                 if (result?.text) {
                     await sock.sendMessage(chatId, { text: result.text }, { quoted: ctx.rawMsg });
                 }
@@ -164,6 +284,46 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
         // Send sticker
         if (response.sticker) {
             await sendSticker(sock, chatId, response.sticker);
+        }
+
+        // Send QR code image
+        if (response.qrBuffer) {
+            await sock.sendMessage(chatId, {
+                image: response.qrBuffer,
+                caption: `📱 QR Code generated`,
+            }, { quoted: ctx.rawMsg });
+        }
+
+        // Send GIF
+        if (response.gif) {
+            const axios = require('axios');
+            try {
+                const gifResp = await axios.get(response.gif.url, { responseType: 'arraybuffer', timeout: 15000 });
+                await sock.sendMessage(chatId, {
+                    video: Buffer.from(gifResp.data),
+                    gifPlayback: true,
+                    caption: response.gif.title || '',
+                }, { quoted: ctx.rawMsg });
+            } catch (gifErr) {
+                await sock.sendMessage(chatId, { text: `🎭 ${response.gif.url}` }, { quoted: ctx.rawMsg });
+            }
+        }
+
+        // Send AI-generated image
+        if (response.imageBuffer) {
+            await sock.sendMessage(chatId, {
+                image: response.imageBuffer,
+                caption: response.revisedPrompt ? `🎨 ${response.revisedPrompt}` : '🎨 Image generated',
+            }, { quoted: ctx.rawMsg });
+        }
+
+        // Send extracted PDF
+        if (response.pdfBuffer) {
+            await sock.sendMessage(chatId, {
+                document: response.pdfBuffer,
+                fileName: 'extracted.pdf',
+                mimetype: 'application/pdf',
+            }, { quoted: ctx.rawMsg });
         }
 
         // Send file
