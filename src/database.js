@@ -266,6 +266,25 @@ const initDatabase = () => {
         );
         CREATE INDEX IF NOT EXISTS idx_activity_logs_created ON activity_logs(created_at);
     `);
+
+    // ═══════════════════════════════════════════════════════════
+    //  V5 TABLES — Verification Sources
+    // ═══════════════════════════════════════════════════════════
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS verification_sources (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id TEXT NOT NULL,
+            message_id TEXT,
+            query TEXT,
+            sources TEXT,
+            confidence REAL,
+            verified INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_verification_chat ON verification_sources(chat_id);
+        CREATE INDEX IF NOT EXISTS idx_verification_created ON verification_sources(created_at);
+    `);
     
     console.log('[Database] SQLite initialized at', DB_PATH);
     return db;
@@ -1376,6 +1395,37 @@ const getActivityLogsByAdmin = (adminId, limit = 50) => {
     ).all(adminId, limit);
 };
 
+// ═══════════════════════════════════════════════════════════
+//  VERIFICATION SOURCES CRUD
+// ═══════════════════════════════════════════════════════════
+
+const saveVerification = (chatId, messageId, query, sources, confidence, verified) => {
+    const database = initDatabase();
+    return database.prepare(
+        'INSERT INTO verification_sources (chat_id, message_id, query, sources, confidence, verified) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(chatId, messageId || null, query || null, JSON.stringify(sources || []), confidence || 0, verified ? 1 : 0);
+};
+
+const getVerification = (chatId, messageId) => {
+    const database = initDatabase();
+    const row = database.prepare(
+        'SELECT * FROM verification_sources WHERE chat_id = ? AND message_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).get(chatId, messageId);
+    if (row && row.sources) row.sources = JSON.parse(row.sources);
+    return row || null;
+};
+
+const getRecentVerifications = (chatId, limit = 10) => {
+    const database = initDatabase();
+    const rows = database.prepare(
+        'SELECT * FROM verification_sources WHERE chat_id = ? ORDER BY created_at DESC LIMIT ?'
+    ).all(chatId, limit);
+    return rows.map(r => {
+        if (r.sources) r.sources = JSON.parse(r.sources);
+        return r;
+    });
+};
+
 module.exports = {
     initDatabase,
     saveMessage,
@@ -1470,6 +1520,10 @@ module.exports = {
     logActivity,
     getActivityLogs,
     getActivityLogsByAdmin,
+    // Verification sources
+    saveVerification,
+    getVerification,
+    getRecentVerifications,
     // Constants (for testing)
     RETENTION_MS,
     RETENTION_MONTHS,
