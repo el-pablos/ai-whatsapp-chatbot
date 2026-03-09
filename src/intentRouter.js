@@ -41,6 +41,9 @@ const { listReminders } = require('./reminderHandler');
 const { listNotes, listTodos } = require('./noteHandler');
 const { addNumber: allowAdd, removeNumber: allowRemove, toggleNumber: allowToggle, getAll: getAllAllow, getStats: getAllowStats } = require('./allowlistManager');
 const { normalizePhoneNumber, isFeatureEnabled, setFeatureToggle, getAllFeatureToggles } = require('./database');
+const { needsVerification } = require('./liveVerifier');
+const { aggregateSearch } = require('./searchAggregator');
+const { verifyWithInternet } = require('./factChecker');
 
 // ═══════════════════════════════════════════════════════════
 //  COMMAND → FEATURE ID MAPPING (for feature toggle checks)
@@ -61,6 +64,7 @@ const CMD_FEATURE_MAP = {
     '/jadwal': 'scheduled_message', '/schedule': 'scheduled_message',
     '/notes': 'note_create', '/catatan': 'note_create', '/todos': 'todo_manage',
     '/backup': 'admin_backup',
+    '/verify': 'live_verification',
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -118,6 +122,27 @@ const PREFIX_COMMANDS = {
             return { text: 'backup berhasil dikirim cuy 📦' };
         } catch (err) {
             return { text: `gagal backup: ${err.message}` };
+        }
+    },
+    '/verify': async (args, ctx) => {
+        if (!ctx.isOwner) return { text: 'fitur ini cuma buat owner aja cuy 😅' };
+        if (!args || args.trim().length === 0) return { text: 'kasih query dong bre\ncontoh: /verify harga bitcoin sekarang' };
+        try {
+            const searchResults = await aggregateSearch(args.trim());
+            if (!searchResults.results.length) return { text: 'gak nemu data buat verify bre 😕' };
+            const verifyResult = await verifyWithInternet(args.trim(), searchResults, args.trim());
+            const lines = [
+                `🔍 *Verification Result*`,
+                ``,
+                `Status: ${verifyResult.verified}`,
+                `Confidence: ${(verifyResult.confidence * 100).toFixed(0)}%`,
+            ];
+            if (verifyResult.corrections !== 'none') lines.push(`Koreksi: ${verifyResult.corrections}`);
+            if (verifyResult.updatedResponse) lines.push(`\nInfo: ${verifyResult.updatedResponse}`);
+            if (verifyResult.sources.length) lines.push(`\nSources: ${verifyResult.sources.join(', ')}`);
+            return { text: lines.join('\n') };
+        } catch (err) {
+            return { text: `gagal verify: ${err.message}` };
         }
     },
     '/translate': async (args, ctx) => {
