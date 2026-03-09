@@ -474,6 +474,31 @@ const processYoutubeUrl = async (url) => {
     };
 };
 
+/**
+ * Generate video notes from YouTube URL
+ * @param {string} url - YouTube URL
+ * @param {object} options - { chaptersOnly, includeTranscript }
+ * @returns {Promise<object>} - { success, notes, error }
+ */
+const processVideoNotes = async (url, options = {}) => {
+    if (!(await isYtDlpInstalled())) {
+        return {
+            success: false,
+            notes: '',
+            error: 'yt-dlp not installed'
+        };
+    }
+
+    try {
+        const { analyzeVideo } = require('./video/videoAnalyzer');
+        const result = await analyzeVideo(url, options);
+        return result;
+    } catch (err) {
+        console.error('[YoutubeHandler] processVideoNotes error:', err.message);
+        return { success: false, notes: '', error: err.message };
+    }
+};
+
 module.exports = {
     detectYoutubeUrl,
     getVideoInfo,
@@ -489,6 +514,7 @@ module.exports = {
     checkDependencies,
     commandExists,
     processYoutubeUrl,
+    processVideoNotes,
     formatDuration,
     ensureDownloadDir,
     YOUTUBE_PATTERNS,
