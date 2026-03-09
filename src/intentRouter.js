@@ -65,6 +65,7 @@ const CMD_FEATURE_MAP = {
     '/notes': 'note_create', '/catatan': 'note_create', '/todos': 'todo_manage',
     '/backup': 'admin_backup',
     '/verify': 'live_verification',
+    '/videonotes': 'video_notes', '/vnotes': 'video_notes',
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -144,6 +145,21 @@ const PREFIX_COMMANDS = {
         } catch (err) {
             return { text: `gagal verify: ${err.message}` };
         }
+    },
+    '/videonotes': async (args, ctx) => {
+        if (!args || args.trim().length === 0) return { text: 'kasih link YouTube dong bre\ncontoh: /videonotes https://youtube.com/watch?v=xxx' };
+        try {
+            const { processVideoNotes } = require('./youtubeHandler');
+            const result = await processVideoNotes(args.trim());
+            if (!result.success) return { text: result.error || 'gagal generate notes bro 😕' };
+            return { text: result.notes || 'notes kosong cuy' };
+        } catch (err) {
+            return { text: `gagal bikin videonotes: ${err.message}` };
+        }
+    },
+    '/vnotes': async (args, ctx) => {
+        const handler = PREFIX_COMMANDS['/videonotes'];
+        return handler(args, ctx);
     },
     '/translate': async (args, ctx) => {
         if (!args) return { text: listLanguages() };
