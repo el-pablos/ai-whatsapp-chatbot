@@ -67,6 +67,7 @@ const CMD_FEATURE_MAP = {
     '/verify': 'live_verification',
     '/videonotes': 'video_notes', '/vnotes': 'video_notes',
     '/reasoning': 'smart_reasoning', '/think': 'smart_reasoning', '/mikir': 'smart_reasoning',
+    '/rag': 'rag_document', '/dokumen': 'rag_document', '/ragstatus': 'rag_document',
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -183,6 +184,30 @@ const PREFIX_COMMANDS = {
     '/mikir': async (args, ctx) => {
         const handler = PREFIX_COMMANDS['/reasoning'];
         return handler(args, ctx);
+    },
+    '/rag': async (args, ctx) => {
+        if (!args || args.trim().length === 0) return { text: 'Pake format:\n/rag [pertanyaan] — tanya dari dokumen\n/ragstatus — cek status RAG\n/dokumen [pertanyaan] — sama aja' };
+        try {
+            const { query } = require('./rag/ragPipeline');
+            const result = await query(args.trim(), { showStats: true, citations: true });
+            return { text: result.answer || 'Ga nemu jawaban dari dokumen.' };
+        } catch (err) {
+            console.error('[IntentRouter] /rag error:', err.message);
+            return { text: 'RAG error: ' + err.message };
+        }
+    },
+    '/dokumen': async (args, ctx) => {
+        const handler = PREFIX_COMMANDS['/rag'];
+        return handler(args, ctx);
+    },
+    '/ragstatus': async (args, ctx) => {
+        try {
+            const { getStatus } = require('./rag/ragPipeline');
+            const status = getStatus();
+            return { text: `📚 *RAG Status*\nEnabled: ${status.enabled}\nDokumen: ${status.storeStats.size} chunks\nMax ingest: ${(status.maxIngestSize / 1000).toFixed(0)}KB` };
+        } catch (err) {
+            return { text: 'Gagal cek status RAG: ' + err.message };
+        }
     },
     '/translate': async (args, ctx) => {
         if (!args) return { text: listLanguages() };
