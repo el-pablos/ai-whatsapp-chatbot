@@ -477,16 +477,24 @@ const processYoutubeUrl = async (url) => {
 /**
  * Generate video notes from YouTube URL
  * @param {string} url - YouTube URL
- * @param {object} options - { chaptersOnly, includeTranscript }
+ * @param {object} options - { chaptersOnly, includeTranscript, chatId }
  * @returns {Promise<object>} - { success, notes, error }
  */
+const _videoNotesRateLimit = new Map();
+const VIDEO_NOTES_COOLDOWN = 30000; // 30s between requests per chat
+
 const processVideoNotes = async (url, options = {}) => {
     if (!(await isYtDlpInstalled())) {
-        return {
-            success: false,
-            notes: '',
-            error: 'yt-dlp not installed'
-        };
+        return { success: false, notes: '', error: 'yt-dlp not installed' };
+    }
+
+    // Rate limit per chat
+    if (options.chatId) {
+        const last = _videoNotesRateLimit.get(options.chatId);
+        if (last && Date.now() - last < VIDEO_NOTES_COOLDOWN) {
+            return { success: false, notes: '', error: 'Tunggu bentar ya, lagi proses video sebelumnya 😅' };
+        }
+        _videoNotesRateLimit.set(options.chatId, Date.now());
     }
 
     try {
