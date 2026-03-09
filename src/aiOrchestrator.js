@@ -31,6 +31,8 @@ const { analyzeComplexity } = require('./reasoning/complexityAnalyzer');
 const { performReasoning } = require('./reasoning/chainOfThought');
 const { getCachedReasoning, setCachedReasoning } = require('./reasoning/reasoningCache');
 const { formatForWhatsApp: formatReasoningWA } = require('./reasoning/reasoningParser');
+const { isReady: isRagReady } = require('./rag/ragRetriever');
+const { query: ragQuery } = require('./rag/ragPipeline');
 
 // ═══════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -359,6 +361,20 @@ JANGAN hanya menjawab dengan teks. WAJIB panggil kedua tool tersebut.`,
                 } catch (reasonErr) {
                     console.error('[Orchestrator] Reasoning failed:', reasonErr.message);
                 }
+            }
+        }
+
+        // ── 9d. RAG Document Intelligence ─────────────────
+        const ragEnabled = process.env.RAG_ENABLED !== 'false';
+        if (ragEnabled && text && isRagReady().ready) {
+            try {
+                const ragResult = await ragQuery(text, { topK: 3, showStats: true });
+                if (ragResult.stats?.found > 0 && ragResult.answer) {
+                    console.log(`[Orchestrator] RAG hit: ${ragResult.stats.found} chunks, maxScore=${ragResult.stats.maxScore}`);
+                    finalText += '\n\n📚 *Dari Dokumen:*\n' + ragResult.answer;
+                }
+            } catch (ragErr) {
+                console.error('[Orchestrator] RAG query failed:', ragErr.message);
             }
         }
 
