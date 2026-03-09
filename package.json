@@ -1,6 +1,6 @@
 {
   "name": "ai-whatsapp-chatbot",
-  "version": "4.1.0",
+  "version": "5.0.0",
   "main": "src/bot.js",
   "engines": {
     "node": ">=20.0.0"
@@ -39,11 +39,17 @@
     "rss",
     "image-generation",
     "url-summarizer",
-    "scheduled-messages"
+    "scheduled-messages",
+    "rag",
+    "vector-search",
+    "reasoning",
+    "video-notes",
+    "live-assistant",
+    "embeddings"
   ],
   "author": "Tama El Pablo (el-pablos)",
   "license": "MIT",
-  "description": "AI WhatsApp Chatbot V4 — ClawBot-grade persona Tama dengan 40+ AI tools, long-term memory, reminder, notes, URL summarizer, GIF search, QR code, PDF editor, translator, kalkulator, RSS reader, image gen, poll system, dan 70+ format document reader",
+  "description": "Tama AI V5 — Live AI WhatsApp Assistant dengan Smart Reasoning, Video Note Extraction, Advanced RAG Document Intelligence, dan Real-time Internet Verification. Powered by Claude Sonnet 4.6 via Copilot API.",
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
