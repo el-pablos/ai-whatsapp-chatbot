@@ -385,6 +385,218 @@ const FEATURES = [
         output: { report: 'string' },
         examples: [],
     },
+
+    // ═══════════════════════════════════════════════════
+    //  REMINDER & SCHEDULING
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'reminder_create',
+        name: 'Reminder / Alarm',
+        module: 'reminderHandler',
+        description: 'Set reminders with natural language Indonesian time parsing. Cron checks every minute.',
+        trigger: '"ingetin gw", "alarm jam 3", AI calls reminder_create tool',
+        input: { message: 'string', time: 'string' },
+        output: { confirmation: 'string', remindAt: 'Date' },
+        examples: ['ingetin gw makan jam 12', 'alarm besok jam 7 pagi', 'reminder 30 menit lagi meeting'],
+    },
+    {
+        id: 'reminder_list',
+        name: 'List Reminders',
+        module: 'reminderHandler',
+        description: 'View all active reminders.',
+        trigger: '/reminder list, AI calls reminder_list',
+        input: {},
+        output: { list: 'string' },
+        examples: ['/reminder list', 'lihat pengingat gw'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  LONG-TERM MEMORY
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'memory_save',
+        name: 'Long-Term Memory',
+        module: 'memoryHandler',
+        description: 'Persist user preferences, facts, and lessons across sessions. Auto-captures from chat context.',
+        trigger: '"ingat ini", "gw suka X", "panggil aku Y", AI calls memory_save',
+        input: { key: 'string', value: 'string', category: 'string' },
+        output: { confirmation: 'string' },
+        examples: ['ingat ini: gw alergi kacang', 'gw suka warna biru', 'panggil aku bos'],
+    },
+    {
+        id: 'memory_search',
+        name: 'Search Memory',
+        module: 'memoryHandler',
+        description: 'Search stored memories by keyword.',
+        trigger: 'AI calls memory_search when context is needed',
+        input: { query: 'string' },
+        output: { memories: 'Array' },
+        examples: ['apa yang gw suka?', 'emang gw alergi apa?'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  URL SUMMARIZER
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'url_summarize',
+        name: 'URL / Article Summarizer',
+        module: 'urlSummarizerHandler',
+        description: 'Fetch a web page and summarize its content using AI.',
+        trigger: 'user sends a URL, AI calls url_summarize',
+        input: { url: 'string' },
+        output: { summary: 'string' },
+        examples: ['rangkumin artikel ini https://example.com', 'apa isi link ini?'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  NOTES & TODO
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'note_create',
+        name: 'Notes',
+        module: 'noteHandler',
+        description: 'Create and manage personal text notes.',
+        trigger: '/notes, AI calls note_create',
+        input: { title: 'string', content: 'string' },
+        output: { confirmation: 'string' },
+        examples: ['catat ini: ide proyek baru', '/notes list'],
+    },
+    {
+        id: 'todo_manage',
+        name: 'Todo List',
+        module: 'noteHandler',
+        description: 'Create and manage to-do items with toggle done/active.',
+        trigger: '/todo, AI calls todo_create/todo_toggle',
+        input: { title: 'string' },
+        output: { list: 'string' },
+        examples: ['tambah todo: beli susu', '/todo list', '/todo done 1'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  TRANSLATE
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'translate',
+        name: 'AI Translation (20 languages)',
+        module: 'translateHandler',
+        description: 'Translate text to 20 languages using AI. Supports id, en, ja, ko, zh, ar, es, fr, de, it, pt, ru, th, vi, ms, hi, tr, nl, pl, sv.',
+        trigger: '/translate [lang] [text], AI calls translate_text',
+        input: { text: 'string', targetLang: 'string' },
+        output: { translation: 'string' },
+        examples: ['/translate en halo apa kabar', '/translate ja selamat pagi'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  GIF SEARCH
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'gif_search',
+        name: 'GIF Search (Tenor/Giphy)',
+        module: 'gifHandler',
+        description: 'Search GIFs from Tenor and Giphy. Requires TENOR_API_KEY or GIPHY_API_KEY.',
+        trigger: '/gif [query], AI calls gif_search',
+        input: { query: 'string' },
+        output: { gifUrl: 'string' },
+        examples: ['/gif kucing lucu', '/gif party'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  QR CODE
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'qr_generate',
+        name: 'QR Code Generator',
+        module: 'qrCodeHandler',
+        description: 'Generate QR code image from text or URL.',
+        trigger: '/qr [content], AI calls qr_generate',
+        input: { content: 'string' },
+        output: { imageBuffer: 'Buffer' },
+        examples: ['/qr https://example.com', '/qr wifi:MyNetwork'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  PDF EDITOR
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'pdf_edit',
+        name: 'PDF Editor (merge/extract/info)',
+        module: 'pdfEditorHandler',
+        description: 'Merge PDFs, extract specific pages, get PDF info. Uses pdf-lib.',
+        trigger: '/pdf [action], AI calls pdf_info/pdf_extract_pages',
+        input: { pdfBuffer: 'Buffer', pages: 'string' },
+        output: { pdfBuffer: 'Buffer' },
+        examples: ['/pdf info', '/pdf extract 1,3,5'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  POLLING
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'poll',
+        name: 'Poll / Voting',
+        module: 'pollHandler',
+        description: 'Create polls with visual bar results in group or private chats.',
+        trigger: '/poll [question] | [option1] | [option2], /vote [n], /poll close',
+        input: { question: 'string', options: 'string[]' },
+        output: { pollMessage: 'string' },
+        examples: ['/poll Makan apa? | Nasi goreng | Mie | Sate', '/vote 1', '/poll close'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  CALCULATOR
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'calculator',
+        name: 'Calculator & Converter',
+        module: 'calculatorHandler',
+        description: 'Math evaluation, unit conversion, and live currency conversion via mathjs + exchange rate API.',
+        trigger: '/calc [expr], AI calls calculator_eval/convert_unit/convert_currency',
+        input: { expression: 'string' },
+        output: { result: 'string' },
+        examples: ['/calc sqrt(144)', '/calc 100 USD to IDR', '/calc 10 km to mile'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  RSS FEEDS
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'rss_feeds',
+        name: 'RSS Feed Reader',
+        module: 'rssHandler',
+        description: 'Subscribe to RSS feeds, check for new articles. Auto-checks every 30 minutes via cron.',
+        trigger: '/rss add [url], /rss list, /rss check, /rss remove [id]',
+        input: { url: 'string', label: 'string' },
+        output: { articles: 'Array' },
+        examples: ['/rss add https://example.com/feed.xml', '/rss list', '/rss check'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  IMAGE GENERATION
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'image_gen',
+        name: 'AI Image Generation (DALL-E)',
+        module: 'imageGenHandler',
+        description: 'Generate images using OpenAI DALL-E. Requires OPENAI_API_KEY.',
+        trigger: '/imagine [prompt], AI calls image_generate',
+        input: { prompt: 'string', size: 'string' },
+        output: { imageBuffer: 'Buffer' },
+        examples: ['/imagine kucing bermain gitar', '/imagine sunset in tokyo --size landscape'],
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  SCHEDULED MESSAGES
+    // ═══════════════════════════════════════════════════
+    {
+        id: 'scheduled_message',
+        name: 'Scheduled Messages',
+        module: 'scheduledMessageHandler',
+        description: 'Schedule messages to be sent at specific times. Owner-only for other chats.',
+        trigger: '/schedule [time] | [message], AI calls schedule_message',
+        input: { message: 'string', time: 'string' },
+        output: { confirmation: 'string' },
+        examples: ['/schedule besok jam 10 | selamat pagi!', '/schedule list'],
+    },
 ];
 
 /**
