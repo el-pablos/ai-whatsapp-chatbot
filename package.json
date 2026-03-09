@@ -1,6 +1,6 @@
 {
   "name": "ai-whatsapp-chatbot",
-  "version": "3.1.0",
+  "version": "4.0.0",
   "main": "src/bot.js",
   "engines": {
     "node": ">=20.0.0"
@@ -20,11 +20,27 @@
     "chatbot",
     "baileys",
     "document-reader",
-    "youtube-downloader"
+    "youtube-downloader",
+    "clawbot",
+    "persona",
+    "ai-tools",
+    "reminder",
+    "notes",
+    "memory",
+    "translator",
+    "calculator",
+    "gif",
+    "qr-code",
+    "pdf-editor",
+    "poll",
+    "rss",
+    "image-generation",
+    "url-summarizer",
+    "scheduled-messages"
   ],
   "author": "Tama El Pablo (el-pablos)",
   "license": "MIT",
-  "description": "AI WhatsApp Chatbot dengan persona Tama - Universal Document Reader 70+ formats, YouTube Download, Vision API, dan fitur lengkap",
+  "description": "AI WhatsApp Chatbot V4 — ClawBot-grade persona Tama dengan 40+ AI tools, long-term memory, reminder, notes, URL summarizer, GIF search, QR code, PDF editor, translator, kalkulator, RSS reader, image gen, poll system, dan 70+ format document reader",
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
