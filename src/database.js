@@ -285,6 +285,28 @@ const initDatabase = () => {
         CREATE INDEX IF NOT EXISTS idx_verification_chat ON verification_sources(chat_id);
         CREATE INDEX IF NOT EXISTS idx_verification_created ON verification_sources(created_at);
     `);
+
+    // ═══════════════════════════════════════════════════════════
+    //  V5 TABLES — Video Notes
+    // ═══════════════════════════════════════════════════════════
+
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS video_notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id TEXT NOT NULL,
+            video_id TEXT NOT NULL,
+            video_url TEXT,
+            title TEXT,
+            notes TEXT,
+            summary TEXT,
+            key_points TEXT,
+            chapters TEXT,
+            duration INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_video_notes_chat ON video_notes(chat_id);
+        CREATE INDEX IF NOT EXISTS idx_video_notes_video ON video_notes(video_id);
+    `);
     
     console.log('[Database] SQLite initialized at', DB_PATH);
     return db;
@@ -1426,6 +1448,43 @@ const getRecentVerifications = (chatId, limit = 10) => {
     });
 };
 
+// ═══════════════════════════════════════════════════════════
+//  VIDEO NOTES CRUD
+// ═══════════════════════════════════════════════════════════
+
+const saveVideoNote = (chatId, videoId, videoUrl, title, notes, summary, keyPoints, chapters, duration) => {
+    const database = initDatabase();
+    return database.prepare(
+        `INSERT OR REPLACE INTO video_notes (chat_id, video_id, video_url, title, notes, summary, key_points, chapters, duration)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(chatId, videoId, videoUrl || null, title || null, notes || null, summary || null,
+        JSON.stringify(keyPoints || []), JSON.stringify(chapters || []), duration || null);
+};
+
+const getVideoNote = (chatId, videoId) => {
+    const database = initDatabase();
+    const row = database.prepare(
+        'SELECT * FROM video_notes WHERE chat_id = ? AND video_id = ? ORDER BY created_at DESC LIMIT 1'
+    ).get(chatId, videoId);
+    if (row) {
+        if (row.key_points) row.key_points = JSON.parse(row.key_points);
+        if (row.chapters) row.chapters = JSON.parse(row.chapters);
+    }
+    return row || null;
+};
+
+const getVideoNotes = (chatId, limit = 10) => {
+    const database = initDatabase();
+    const rows = database.prepare(
+        'SELECT * FROM video_notes WHERE chat_id = ? ORDER BY created_at DESC LIMIT ?'
+    ).all(chatId, limit);
+    return rows.map(r => {
+        if (r.key_points) r.key_points = JSON.parse(r.key_points);
+        if (r.chapters) r.chapters = JSON.parse(r.chapters);
+        return r;
+    });
+};
+
 module.exports = {
     initDatabase,
     saveMessage,
@@ -1524,6 +1583,10 @@ module.exports = {
     saveVerification,
     getVerification,
     getRecentVerifications,
+    // Video notes
+    saveVideoNote,
+    getVideoNote,
+    getVideoNotes,
     // Constants (for testing)
     RETENTION_MS,
     RETENTION_MONTHS,
