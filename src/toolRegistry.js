@@ -1135,6 +1135,27 @@ const TOOLS = [
             };
         },
     },
+
+    // ── V5: Video Notes ────────────────────────────────────────
+    {
+        name: 'video_notes',
+        description: 'Generate comprehensive notes from a YouTube video. Extracts timestamps, transcript, key points, and AI summary. Use when user shares a YouTube link and wants notes or summary.',
+        parameters: {
+            type: 'object',
+            properties: {
+                url: { type: 'string', description: 'YouTube video URL' },
+                chapters_only: { type: 'boolean', description: 'Only return chapters/timestamps (default false)' },
+            },
+            required: ['url'],
+        },
+        execute: async (params) => {
+            const { processVideoNotes } = require('./youtubeHandler');
+            const result = await processVideoNotes(params.url, {
+                chaptersOnly: params.chapters_only || false,
+            });
+            return result;
+        },
+    },
 ];
 
 /**
