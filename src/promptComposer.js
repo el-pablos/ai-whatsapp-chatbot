@@ -19,6 +19,7 @@
 const { TAMA_SYSTEM_PROMPT } = require('./aiHandler');
 const { getToolSummary } = require('./toolRegistry');
 const { generateCapabilityCards } = require('./featureRegistry');
+const { getRelevantMemories } = require('./memoryHandler');
 
 // ═══════════════════════════════════════════════════════════
 //  TOOL-USE INSTRUCTION BLOCK
@@ -40,6 +41,20 @@ Kamu punya akses ke tools berikut. Gunakan tools saat dibutuhkan:
 - Untuk bikin file teks biasa: pakai file_create
 - Untuk bikin presentasi/PPT/PPTX/PowerPoint/slide: pakai presentation_create (WAJIB pakai tool ini, JANGAN pakai file_create untuk pptx)
 - Untuk stats: pakai admin_stats
+- Untuk reminder/alarm: pakai reminder_create, reminder_list, reminder_delete
+- Untuk simpan info penting user (preferensi, fakta): pakai memory_save, memory_search, memory_list
+- Untuk rangkum artikel/URL: pakai url_summarize
+- Untuk catatan/notes: pakai note_create, note_list, note_search, note_delete
+- Untuk todo list: pakai todo_create, todo_list, todo_toggle
+- Untuk terjemahan: pakai translate_text (20 bahasa)
+- Untuk cari GIF: pakai gif_search
+- Untuk generate QR code: pakai qr_generate
+- Untuk info/extract PDF: pakai pdf_info, pdf_extract_pages
+- Untuk polling: pakai poll_create, poll_vote, poll_results, poll_close
+- Untuk kalkulasi/konversi: pakai calculator_eval, calculator_convert_unit, calculator_convert_currency
+- Untuk RSS feeds: pakai rss_subscribe, rss_list, rss_unsubscribe, rss_check
+- Untuk generate gambar AI: pakai image_generate
+- Untuk jadwal pesan: pakai schedule_message, schedule_list
 
 MULTI-STEP TOOL CHAINING:
 - Kalau user kirim dokumen DAN minta dibuatkan presentasi/PPT/slide:
@@ -88,6 +103,25 @@ const composeSystemPrompt = (opts = {}) => {
         parts.push('\n\nAVAILABLE TOOLS:\n' + toolSummary);
     }
 
+    // Inject long-term memory context
+    if (opts.userId) {
+        const memories = getRelevantMemories(opts.userId, opts.userMessage || '');
+        if (memories.length > 0) {
+            const memBlock = memories.map(m => `- [${m.category}] ${m.key}: ${m.value}`).join('\n');
+            parts.push(`\n\nLONG-TERM MEMORY (hal yang kamu ingat tentang user ini):\n${memBlock}`);
+        }
+    }
+
+    // Group chat behavior instructions
+    if (opts.isGroup) {
+        parts.push(`\n\nGROUP CHAT MODE:
+- Di grup, kamu dipanggil karena ada yg mention/reply ke kamu
+- Jawab singkat dan to the point, jangan terlalu panjang
+- Pakai nama pengirim kalo bisa
+- Jangan dominasi percakapan grup
+- Kalau ada polling atau diskusi, bantu moderasi`);
+    }
+
     return parts.join('');
 };
 
@@ -128,6 +162,16 @@ const composeUserMessage = (normalizedMsg, profile = {}, preferredName = null) =
     if (normalizedMsg.location) {
         const loc = normalizedMsg.location;
         parts.push(`[User share lokasi: ${loc.name || ''} ${loc.address || `(${loc.latitude}, ${loc.longitude})`}]`);
+    }
+
+    // Add contact/vCard context
+    if (normalizedMsg.contact) {
+        if (Array.isArray(normalizedMsg.contact)) {
+            const names = normalizedMsg.contact.map(c => c.name).join(', ');
+            parts.push(`[User share ${normalizedMsg.contact.length} kontak: ${names}]`);
+        } else {
+            parts.push(`[User share kontak: ${normalizedMsg.contact.name}${normalizedMsg.contact.phone ? ` (${normalizedMsg.contact.phone})` : ''}]`);
+        }
     }
 
     // Add the actual text
