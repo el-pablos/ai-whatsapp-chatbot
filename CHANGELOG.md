@@ -5,6 +5,45 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] - 2025-07-24
+
+### 🐛 BUGFIX V2.0 — LID Resolution + Document Tool Execution
+
+#### Bug #1: LID JID Resolution (@lid → phone number)
+Baileys 7.x sends JIDs in `@lid` format (WhatsApp Link ID) instead of `@s.whatsapp.net`.
+The LID number is NOT a phone number, causing all phone-based lookups to fail.
+
+### Added
+- **src/lidResolver.js** — centralized LID↔phone mapping module with in-memory cache + SQLite persistent storage. Handles registration from contacts, creds.me, and manual mapping.
+- `resolvedPhone` field in messageNormalizer output
+- `allowlist_mode` config (open/closed/allowlist) in database defaults
+- `detectAttachmentIntent()` in aiOrchestrator for doc/audio detection
+- 6 new `detectActionIntent` patterns (baca, analisis, convert, isi, tolong, apa isi)
+- 5 new `hasPhantomPromise` patterns (document-specific phantom promises)
+- 35 new tests for lidResolver (format detection, resolution, mapping, edge cases)
+- 6 new allowlist tests (LID owner, resolve LID, block unresolved, allowlist_mode)
+- 2 new userProfileHelper tests (owner via @lid, unknown @lid)
+
+### Fixed
+- **userProfileHelper.js**: `normalizePhone()` now uses `resolveToPhone()` from lidResolver — owner detection works for `@lid` JIDs
+- **allowlistManager.js**: `isAllowed()` resolves `@lid` via lidResolver, blocks unresolved LIDs when allowlist has entries (prevents bypass)
+- **bot.js**: `initLidDatabase()` on startup, `registerFromMe()` on connection open, `contacts.update/upsert` event listeners for LID mapping
+- **database.js**: `normalizePhoneNumber()` tries lidResolver first
+- **intentRouter.js**: `isOwner()` checks now use `resolvedPhone || chatId` instead of just chatId
+
+#### Bug #2: Documents/Tools Not Processed
+Documents sent to bot only got text responses because `forceToolUse` was only set for PPTX.
+
+### Fixed
+- **aiOrchestrator.js**: `forceToolUse=true` for ALL documents (not just PPTX) — forces `tool_choice='required'`
+- Hint strength upgraded from `[HINT]` to `[INSTRUKSI WAJIB]` for document processing
+- Phantom detection now also checks `detectAttachmentIntent()` (doc/audio attachments)
+- `classifyUser` uses `resolvedPhone` so `@lid` owners get correct tools
+- Edge case: `forceToolUse=true` + empty tools array falls back to `auto` (prevents API error)
+
+### Changed
+- Version bump 5.0.1 → 5.1.0
+
 ## [5.0.1] - 2025-07-23
 
 ### 🐛 BUGFIX V1.0 — 4 Critical Fixes
