@@ -49,7 +49,13 @@ const path = require('path');
 // ═══════════════════════════════════════════════════════════
 const { normalizeMessage } = require('./messageNormalizer');
 const { routeMessage } = require('./intentRouter');
-const { initLidDatabase, registerFromContacts, registerFromMe } = require('./lidResolver');
+const { initLidDatabase, registerFromContacts, registerFromMe, registerMapping, isLidJid } = require('./lidResolver');
+
+// Direct handlers — bypass AI orchestrator for deterministic actions
+const { isStickerRequest, imageToSticker, videoToSticker, sendSticker } = require('./stickerHandler');
+const { detectWeatherQuery, processWeatherRequest } = require('./weatherHandler');
+const { OWNER_PHONES } = require('./userProfileHelper');
+const { smartSend, resilientSend } = require('./messageUtils');
 
 // Legacy imports (still used for lifecycle / helpers)
 const { startHealthCheckServer } = require('./healthCheck');
@@ -58,7 +64,8 @@ const { syncDNSRecord } = require('./dnsUpdater');
 const { 
     initDatabase, 
     closeDatabase,
-    scheduleRetentionCleanup
+    scheduleRetentionCleanup,
+    saveMessage
 } = require('./database');
 const {
     scheduleBackup,
@@ -366,6 +373,13 @@ const connectToWhatsApp = async () => {
             registerFromContacts(contacts);
         });
 
+        // Handle messaging-history.set — Baileys v7 bulk contact sync
+        sock.ev.on('messaging-history.set', ({ contacts: historyContacts }) => {
+            if (historyContacts && historyContacts.length > 0) {
+                registerFromContacts(historyContacts);
+            }
+        });
+
         console.log('[Bot] Socket created, waiting for connection...');
 
     } catch (error) {
@@ -498,6 +512,26 @@ const handleConnectionUpdate = async (update, state) => {
         if (me) {
             // Register bot's own LID↔phone mapping
             registerFromMe(me);
+
+            // ═══ OWNER LID DISCOVERY ══════════════════════════════
+            // Use onWhatsApp() to discover the owner's LID so we can
+            // resolve owner messages that arrive as @lid JIDs.
+            try {
+                for (const ownerPhone of OWNER_PHONES) {
+                    const results = await sock.onWhatsApp(ownerPhone);
+                    if (results && results[0] && results[0].jid) {
+                        if (isLidJid(results[0].jid)) {
+                            registerMapping(results[0].jid, `${ownerPhone}@s.whatsapp.net`);
+                            console.log(`[Bot] Owner LID discovered: ${results[0].jid} → ${ownerPhone}`);
+                        } else {
+                            // returned JID is already phone format, register anyway
+                            registerMapping(results[0].jid, `${ownerPhone}@s.whatsapp.net`);
+                        }
+                    }
+                }
+            } catch (lidErr) {
+                console.warn('[Bot] Owner LID discovery failed:', lidErr.message);
+            }
             console.log('╔═══════════════════════════════════════════════════════════╗');
             console.log('║        ✅ WHATSAPP CONNECTED SUCCESSFULLY!               ║');
             console.log('╠═══════════════════════════════════════════════════════════╣');
@@ -635,7 +669,9 @@ const handleMessagesUpsert = async ({ messages, type }) => {
 };
 
 /**
- * Process individual message — AI-First Architecture v3.0
+ * Process individual message — Hybrid Architecture
+ * Direct handlers for deterministic actions (sticker, weather),
+ * AI orchestrator for everything else.
  */
 const processMessage = async (msg) => {
     if (msg.key.fromMe) return;
@@ -651,6 +687,9 @@ const processMessage = async (msg) => {
 
     const sender = msg.key.remoteJid;
     const messageId = msg.key.id;
+
+    // ═══ GROUP FILTER — skip all group messages ═══
+    if (sender.endsWith('@g.us')) return;
 
     // DEDUPLICATION 1: message ID
     if (processedMessages.has(messageId)) return;
@@ -674,7 +713,7 @@ const processMessage = async (msg) => {
         return;
     }
 
-    // AI-FIRST: Normalize → Route
+    // Normalize message
     const normalized = normalizeMessage(msg);
     console.log(`[Bot] ${normalized.pushName} (${sender}): ${(normalized.text || `[${normalized.messageType}]`).slice(0, 80)}`);
 
@@ -690,7 +729,96 @@ const processMessage = async (msg) => {
         }
     }
 
+    // ═══════════════════════════════════════════════════════════
+    //  DIRECT HANDLERS — deterministic, no AI decision needed
+    //  These run BEFORE the AI orchestrator for reliable execution
+    // ═══════════════════════════════════════════════════════════
+
+    // 1. STICKER: image/video + sticker caption → create sticker directly
+    const hasImageOrVideo = normalized.attachments.some(a => a.type === 'image' || a.type === 'video');
+    if (hasImageOrVideo && isStickerRequest(normalized.text)) {
+        await handleStickerDirect(normalized, msg);
+        return;
+    }
+
+    // 2. WEATHER: detect weather/earthquake query → fetch directly from BMKG
+    if (normalized.text) {
+        const weatherQuery = detectWeatherQuery(normalized.text);
+        if (weatherQuery) {
+            await handleWeatherDirect(normalized, msg, weatherQuery);
+            return;
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    //  FALLBACK: slash commands + AI orchestrator via intentRouter
+    // ═══════════════════════════════════════════════════════════
     await routeMessage(normalized, { sock, rawMsg: msg });
+};
+
+// ═══════════════════════════════════════════════════════════
+//  DIRECT HANDLER FUNCTIONS
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Handle sticker creation directly — no AI orchestrator needed.
+ * Downloads media, converts to WebP sticker, sends back.
+ */
+const handleStickerDirect = async (normalized, rawMsg) => {
+    const { chatId, senderId, pushName, text } = normalized;
+    try {
+        await sock.sendPresenceUpdate('composing', chatId);
+        await resilientSend(sock, chatId, { text: 'sip bntar w jadiin stiker!' }, { quoted: rawMsg });
+
+        const buffer = await downloadMediaMessage(rawMsg, 'buffer', {}, {
+            logger: console,
+            reuploadRequest: sock.updateMediaMessage,
+        });
+
+        const att = normalized.attachments[0];
+        const isVideo = att.type === 'video';
+        let stickerBuffer;
+        if (isVideo) {
+            stickerBuffer = await videoToSticker(buffer);
+        } else {
+            stickerBuffer = await imageToSticker(buffer, att.mimetype || 'image/jpeg');
+        }
+
+        if (stickerBuffer) {
+            await sendSticker(sock, chatId, stickerBuffer, { quoted: rawMsg });
+        }
+
+        // Save to conversation history
+        if (text) saveMessage({ chatId, senderJid: senderId, senderName: pushName, role: 'user', content: text });
+        saveMessage({ chatId, senderJid: 'assistant', senderName: 'Tama AI', role: 'assistant', content: '[sticker sent]' });
+    } catch (err) {
+        console.error(`[Bot] Sticker direct error:`, err.message);
+        await resilientSend(sock, chatId, { text: 'duh gagal bikin stiker bre 😓 ' + err.message }, { quoted: rawMsg });
+    }
+};
+
+/**
+ * Handle weather/earthquake request directly — no AI orchestrator needed.
+ * Fetches data from BMKG API and sends formatted response.
+ */
+const handleWeatherDirect = async (normalized, rawMsg, weatherQuery) => {
+    const { chatId, senderId, pushName, text } = normalized;
+    try {
+        await sock.sendPresenceUpdate('composing', chatId);
+        const result = await processWeatherRequest(weatherQuery);
+        if (result) {
+            await resilientSend(sock, chatId, { text: result }, { quoted: rawMsg });
+        } else {
+            await resilientSend(sock, chatId, { text: 'duh gagal ambil data cuaca bre 😓' }, { quoted: rawMsg });
+        }
+
+        // Save to conversation history
+        if (text) saveMessage({ chatId, senderJid: senderId, senderName: pushName, role: 'user', content: text });
+        if (result) saveMessage({ chatId, senderJid: 'assistant', senderName: 'Tama AI', role: 'assistant', content: result });
+    } catch (err) {
+        console.error(`[Bot] Weather direct error:`, err.message);
+        await resilientSend(sock, chatId, { text: 'gagal cek cuaca: ' + err.message }, { quoted: rawMsg });
+    }
 };
 
 

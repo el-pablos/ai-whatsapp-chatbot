@@ -155,8 +155,19 @@ const registerFromContacts = (contacts) => {
     if (!Array.isArray(contacts)) return;
     for (const contact of contacts) {
         if (!contact.id) continue;
-        if (contact.lid && contact.id && isPhoneJid(contact.id)) {
+        // Case 1: contact has separate lid and phone id fields
+        if (contact.lid && isPhoneJid(contact.id)) {
             registerMapping(contact.lid, contact.id);
+        }
+        // Case 2: contact.id is @lid and contact has a phone/number field
+        if (isLidJid(contact.id) && contact.phone) {
+            registerMapping(contact.id, contact.phone);
+        }
+        // Case 3: contact.id is @lid and contact.notify contains phone hint (rare)
+        // Case 4: cross-reference id and lid when both present
+        if (contact.id && contact.lid && isLidJid(contact.id) && isPhoneJid(contact.lid)) {
+            // Some Baileys versions swap these
+            registerMapping(contact.id, contact.lid);
         }
     }
 };
