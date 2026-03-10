@@ -36,6 +36,8 @@ const {
     handleLegacyMarkers,
     parseWebSearchMarker,
     parseFileMarker,
+    detectActionIntent,
+    hasPhantomPromise,
     MAX_TOOL_ITERATIONS,
     MAX_RETRIES,
 } = require('../src/aiOrchestrator');
@@ -574,6 +576,82 @@ describe('AI Orchestrator', () => {
                 'base64', 'image/jpeg', 'test', '628999@s.whatsapp.net',
             );
             expect(result.text).toContain('error');
+        });
+    });
+
+    // ──────────────────────────────────────────────────
+    //  detectActionIntent
+    // ──────────────────────────────────────────────────
+    describe('detectActionIntent()', () => {
+        test('should detect PPTX request', () => {
+            expect(detectActionIntent('buatkan presentasi tentang AI')).toBe(true);
+        });
+
+        test('should detect search intent', () => {
+            expect(detectActionIntent('cariin harga bitcoin')).toBe(true);
+        });
+
+        test('should detect file creation intent', () => {
+            expect(detectActionIntent('bikin file catatan meeting')).toBe(true);
+        });
+
+        test('should detect download intent', () => {
+            expect(detectActionIntent('download video youtube ini')).toBe(true);
+        });
+
+        test('should detect reminder intent', () => {
+            expect(detectActionIntent('ingetin gw besok jam 8')).toBe(true);
+        });
+
+        test('should detect translate intent', () => {
+            expect(detectActionIntent('translate ini ke english')).toBe(true);
+        });
+
+        test('should detect weather intent', () => {
+            expect(detectActionIntent('cuaca jakarta gimana')).toBe(true);
+        });
+
+        test('should detect sticker intent', () => {
+            expect(detectActionIntent('bikinin sticker dong')).toBe(true);
+        });
+
+        test('should NOT detect normal chat', () => {
+            expect(detectActionIntent('halo apa kabar')).toBe(false);
+            expect(detectActionIntent('iya gw juga suka')).toBe(false);
+        });
+
+        test('should return false for empty/null', () => {
+            expect(detectActionIntent('')).toBe(false);
+            expect(detectActionIntent(null)).toBe(false);
+            expect(detectActionIntent(undefined)).toBe(false);
+        });
+    });
+
+    // ──────────────────────────────────────────────────
+    //  hasPhantomPromise
+    // ──────────────────────────────────────────────────
+    describe('hasPhantomPromise()', () => {
+        test('should detect "oke gas w buatin"', () => {
+            expect(hasPhantomPromise('oke gas w buatin ya')).toBe(true);
+        });
+
+        test('should detect "bntar w cariin dlu"', () => {
+            expect(hasPhantomPromise('bntar w cariin dlu ya')).toBe(true);
+        });
+
+        test('should detect "lagi w bikinin"', () => {
+            expect(hasPhantomPromise('lagi w bikinin nih')).toBe(true);
+        });
+
+        test('should NOT detect normal response', () => {
+            expect(hasPhantomPromise('cerah bro cuacanya')).toBe(false);
+            expect(hasPhantomPromise('iya gw setuju')).toBe(false);
+        });
+
+        test('should return false for empty/null', () => {
+            expect(hasPhantomPromise('')).toBe(false);
+            expect(hasPhantomPromise(null)).toBe(false);
+            expect(hasPhantomPromise(undefined)).toBe(false);
         });
     });
 });

@@ -72,6 +72,62 @@ const parseFileMarker = (text) => {
 };
 
 // ═══════════════════════════════════════════════════════════
+//  PHANTOM TOOL DETECTION
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Detect if user's message implies an action that should trigger a tool call.
+ * E.g. "buatkan presentasi tentang AI" implies presentation_create.
+ * 
+ * @param {string} text - User message text
+ * @returns {boolean}
+ */
+const detectActionIntent = (text) => {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    const patterns = [
+        /\b(buatk?a?n|bikin(?:in)?|buat(?:in)?)\b.+\b(ppt|presentasi|slide|pptx|powerpoint)\b/,
+        /\b(buatk?a?n|bikin(?:in)?|buat(?:in)?)\b.+\b(file|dokumen|catatan|note|todo)\b/,
+        /\b(cari(?:in|kan)?|search|googl)\b/,
+        /\b(download|unduh)\b.+\b(youtube|yt|video|mp[34])\b/,
+        /\b(remind|ingetin|alarm|reminder)\b/,
+        /\b(translate|terjemah)\b/,
+        /\b(generate|bikin(?:in)?)\b.+\b(gambar|image|foto)\b/,
+        /\b(cuaca|weather)\b/,
+        /\b(harga|price)\b.+\b(crypto|bitcoin|btc|saham|stock)\b/,
+        /\b(sticker|stiker)\b/,
+        /\b(tarot|ramalan)\b/,
+        /\b(jadwal(?:kan)?|schedule)\b/,
+        /\b(poll|polling|vote)\b/,
+        /\b(qr\s*code)\b/,
+        /\b(gif)\b/,
+        /\b(simpan|save|ingat)\b/,
+        /\b(rangkum|summarize|summary)\b/,
+    ];
+    return patterns.some(p => p.test(lower));
+};
+
+/**
+ * Detect if AI response contains a "phantom promise" — text that promises action
+ * but was NOT paired with a tool_call.
+ * 
+ * @param {string} text - AI response text
+ * @returns {boolean}
+ */
+const hasPhantomPromise = (text) => {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    const promisePatterns = [
+        /\b(oke|ok|gas|sip)\b.+\b(w|gw|gue|aku)\b.+\b(buatin|bikinin|cariin|search|download)\b/,
+        /\bbntar\b.+\b(w|gw)\b.+\b(buatin|bikinin|cariin)\b/,
+        /\b(lagi|lg)\b.+\b(proses|buatin|bikinin|download|cariin)\b/,
+        /\bw\b.+\b(buatin|bikinin|cariin|downloadin|translatein)\b/,
+        /\b(udah|dah)\b.+\b(w|gw)\b.+\b(buatin|bikinin)\b/,
+    ];
+    return promisePatterns.some(p => p.test(lower));
+};
+
+// ═══════════════════════════════════════════════════════════
 //  CORE: callCopilotAPI
 // ═══════════════════════════════════════════════════════════
 
@@ -260,9 +316,21 @@ JANGAN hanya menjawab dengan teks. WAJIB panggil kedua tool tersebut.`,
 
             const msg = choice.message;
 
-            // ── No tool calls → we're done ────────────────
+            // ── No tool calls → check for phantom promise ───
             if (!msg.tool_calls || msg.tool_calls.length === 0) {
                 finalText = msg.content || '';
+
+                // Phantom promise detection: AI promised action but didn't call a tool
+                if (iteration === 1 && !forceToolUse && detectActionIntent(text) && hasPhantomPromise(finalText)) {
+                    console.log(`[Orchestrator] Phantom promise detected, retrying with tool_choice=required | chatId=${chatId}`);
+                    forceToolUse = true;
+                    messages.push({
+                        role: 'system',
+                        content: '[KOREKSI] Kamu tadi bilang akan melakukan sesuatu tapi TIDAK memanggil tool. WAJIB panggil tool yang sesuai sekarang. JANGAN hanya menjawab dengan teks.',
+                    });
+                    continue; // retry this iteration
+                }
+
                 console.log(`[Orchestrator] iter=${iteration} AI responded with text (no tool_calls) | chatId=${chatId} textLen=${(finalText || '').length}`);
                 break;
             }
@@ -538,6 +606,8 @@ module.exports = {
     handleLegacyMarkers,
     parseWebSearchMarker,
     parseFileMarker,
+    detectActionIntent,
+    hasPhantomPromise,
     MAX_TOOL_ITERATIONS,
     MAX_RETRIES,
 };
