@@ -2,12 +2,15 @@
  * Unit Tests - User Profile Helper Module
  * 
  * Test cases untuk validasi:
- * 1. normalizePhone — JID stripping, digit-only extraction
- * 2. isOwnerPhone — owner detection for both owners, format variations
+ * 1. normalizePhone — JID stripping, digit-only extraction, LID resolution
+ * 2. isOwnerPhone — owner detection for both owners, format variations, @lid
  * 3. isSalsaName — case-insensitive Salsa detection
- * 4. classifyUser — mode mapping (owner_salsa, owner, salsa, normal)
+ * 4. classifyUser — mode mapping (owner_salsa, owner, salsa, normal), LID support
  * 5. Edge cases — null, undefined, empty, malformed input
  */
+
+// Mock lidResolver to control resolution behavior 
+jest.mock('../src/lidResolver');
 
 const {
     OWNER_PHONES,
@@ -17,7 +20,33 @@ const {
     classifyUser,
 } = require('../src/userProfileHelper');
 
+const { resolveToPhone } = require('../src/lidResolver');
+
+// Re-apply mock implementation in beforeEach because resetMocks: true strips it
+const applyLidResolverMock = () => {
+    resolveToPhone.mockImplementation((jid) => {
+        if (!jid) return null;
+        if (jid.endsWith('@s.whatsapp.net') || jid.endsWith('@c.us')) {
+            let phone = jid.split('@')[0].replace(/\D/g, '');
+            if (phone.startsWith('0')) phone = '62' + phone.slice(1);
+            return phone || null;
+        }
+        if (jid === '17685450589393701@lid') return '6282210819939';
+        if (jid.endsWith('@lid')) return null;
+        if (jid.endsWith('@g.us') || jid.endsWith('@broadcast')) return null;
+        const cleaned = jid.replace(/\D/g, '');
+        if (cleaned.length >= 10) {
+            return cleaned.startsWith('0') ? '62' + cleaned.slice(1) : cleaned;
+        }
+        return null;
+    });
+};
+
 describe('User Profile Helper Module', () => {
+
+    beforeEach(() => {
+        applyLidResolverMock();
+    });
 
     // ═══════════════════════════════════════════════════════════
     // OWNER_PHONES constant
@@ -50,7 +79,11 @@ describe('User Profile Helper Module', () => {
             expect(normalizePhone('120363400623404965@g.us')).toBe('120363400623404965');
         });
 
-        it('should strip @lid suffix', () => {
+        it('should resolve known @lid JID to phone via lidResolver', () => {
+            expect(normalizePhone('17685450589393701@lid')).toBe('6282210819939');
+        });
+
+        it('should fallback to digits for unknown @lid', () => {
             expect(normalizePhone('12345@lid')).toBe('12345');
         });
 
@@ -242,6 +275,18 @@ describe('User Profile Helper Module', () => {
                 const result = classifyUser(null, null);
                 expect(result.isOwner).toBe(false);
                 expect(result.isSalsa).toBe(false);
+                expect(result.mode).toBe('normal');
+            });
+
+            it('should detect owner via @lid JID (Bug #1 fix)', () => {
+                const result = classifyUser('17685450589393701@lid', 'Tama');
+                expect(result.isOwner).toBe(true);
+                expect(result.mode).toBe('owner');
+            });
+
+            it('should NOT detect owner for unknown @lid', () => {
+                const result = classifyUser('99999@lid', 'Unknown');
+                expect(result.isOwner).toBe(false);
                 expect(result.mode).toBe('normal');
             });
 

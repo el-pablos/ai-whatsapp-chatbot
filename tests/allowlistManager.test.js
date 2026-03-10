@@ -12,11 +12,18 @@ jest.mock('../src/database', () => ({
     getTotalAllowlistCount: jest.fn(),
     normalizePhoneNumber: jest.fn((p) => p.replace(/\D/g, '').replace(/^0/, '62')),
     isPhoneAllowed: jest.fn(() => true),
+    getConfig: jest.fn(() => 'allowlist'),
+    updateAllowlistEntry: jest.fn(),
 }));
 
 jest.mock('../src/userProfileHelper', () => ({
-    isOwnerPhone: jest.fn((jid) => jid.includes('6282210819939')),
-    OWNER_PHONES: ['6282210819939', '6285817378442'],
+    isOwnerPhone: jest.fn(),
+    OWNER_PHONES: ['6282210819939'],
+}));
+
+jest.mock('../src/lidResolver', () => ({
+    resolveToPhone: jest.fn(),
+    isLidJid: jest.fn(),
 }));
 
 const {
@@ -31,17 +38,43 @@ const {
 
 const db = require('../src/database');
 const { isOwnerPhone } = require('../src/userProfileHelper');
+const { resolveToPhone, isLidJid } = require('../src/lidResolver');
+
+// Helper to re-apply mocks after resetMocks: true strips them
+const applyMocks = () => {
+    db.normalizePhoneNumber.mockImplementation((p) => p.replace(/\D/g, '').replace(/^0/, '62'));
+    db.isPhoneAllowed.mockReturnValue(true);
+    db.getAllowlist.mockReturnValue([]);
+    db.getActiveAllowlistCount.mockReturnValue(0);
+    db.getTotalAllowlistCount.mockReturnValue(0);
+    db.getConfig.mockReturnValue('allowlist');
+    isOwnerPhone.mockImplementation((jid) => {
+        if (!jid) return false;
+        if (jid.includes('6282210819939')) return true;
+        if (jid === '17685450589393701@lid') return true;
+        return false;
+    });
+    resolveToPhone.mockImplementation((jid) => {
+        if (!jid) return null;
+        if (jid.endsWith('@s.whatsapp.net')) {
+            let phone = jid.split('@')[0].replace(/\D/g, '');
+            if (phone.startsWith('0')) phone = '62' + phone.slice(1);
+            return phone;
+        }
+        if (jid === '17685450589393701@lid') return '6282210819939';
+        if (jid === '11111@lid') return '6281234567890';
+        if (jid.endsWith('@lid')) return null;
+        if (jid.endsWith('@g.us')) return null;
+        const cleaned = jid.replace(/\D/g, '');
+        if (cleaned.length >= 10) return cleaned.startsWith('0') ? '62' + cleaned.slice(1) : cleaned;
+        return null;
+    });
+    isLidJid.mockImplementation((jid) => jid && typeof jid === 'string' && jid.endsWith('@lid'));
+};
 
 describe('Allowlist Manager', () => {
     beforeEach(() => {
-        jest.clearAllMocks();
-        // Re-apply mock implementations after resetMocks
-        db.normalizePhoneNumber.mockImplementation((p) => p.replace(/\D/g, '').replace(/^0/, '62'));
-        db.isPhoneAllowed.mockReturnValue(true);
-        db.getAllowlist.mockReturnValue([]);
-        db.getActiveAllowlistCount.mockReturnValue(0);
-        db.getTotalAllowlistCount.mockReturnValue(0);
-        isOwnerPhone.mockImplementation((jid) => jid.includes('6282210819939'));
+        applyMocks();
     });
 
     describe('isAllowed()', () => {
@@ -92,6 +125,40 @@ describe('Allowlist Manager', () => {
             expect(isAllowed('')).toBe(false);
             expect(isAllowed(null)).toBe(false);
             expect(isAllowed(undefined)).toBe(false);
+        });
+
+        // ── LID-specific tests (Bug #1 fix) ──
+        test('should allow owner via @lid JID', () => {
+            expect(isAllowed('17685450589393701@lid')).toBe(true);
+        });
+
+        test('should resolve known @lid and check allowlist', () => {
+            db.getTotalAllowlistCount.mockReturnValue(5);
+            db.isPhoneAllowed.mockReturnValue(true);
+            expect(isAllowed('11111@lid')).toBe(true);
+            expect(db.isPhoneAllowed).toHaveBeenCalledWith('6281234567890');
+        });
+
+        test('should BLOCK unresolved @lid when allowlist has entries', () => {
+            db.getTotalAllowlistCount.mockReturnValue(5);
+            expect(isAllowed('99999@lid')).toBe(false);
+        });
+
+        // ── allowlist_mode tests ──
+        test('should allow everyone in open mode', () => {
+            db.getConfig.mockReturnValue('open');
+            db.getTotalAllowlistCount.mockReturnValue(5);
+            expect(isAllowed('6289999999999@s.whatsapp.net')).toBe(true);
+        });
+
+        test('should block everyone (except owner) in closed mode', () => {
+            db.getConfig.mockReturnValue('closed');
+            expect(isAllowed('6289999999999@s.whatsapp.net')).toBe(false);
+        });
+
+        test('should still allow owner in closed mode', () => {
+            db.getConfig.mockReturnValue('closed');
+            expect(isAllowed('6282210819939@s.whatsapp.net')).toBe(true);
         });
     });
 
