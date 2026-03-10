@@ -10,6 +10,7 @@ import ChatMonitor from './pages/ChatMonitor';
 import ChatDetail from './pages/ChatDetail';
 import Analytics from './pages/Analytics';
 import Logs from './pages/Logs';
+import ServerLogs from './pages/ServerLogs';
 import Settings from './pages/Settings';
 
 function ProtectedRoute({ children }) {
@@ -35,6 +36,7 @@ function AppRoutes() {
                 <Route path="chats/:chatId" element={<ChatDetail />} />
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="logs" element={<Logs />} />
+                <Route path="server-logs" element={<ServerLogs />} />
                 <Route path="settings" element={<Settings />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

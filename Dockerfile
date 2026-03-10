@@ -14,7 +14,7 @@ RUN npx vite build
 # Stage 2: Production image
 FROM node:22-alpine
 LABEL maintainer="el-pablos <yeteprem.end23juni@gmail.com>"
-LABEL description="Tama AI WhatsApp Chatbot v4.1.0"
+LABEL description="Tama AI WhatsApp Chatbot v5.0.1"
 
 # Install system deps for better-sqlite3, yt-dlp, ffmpeg
 RUN apk add --no-cache python3 make g++ ffmpeg curl \
@@ -30,13 +30,13 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy source code
 COPY src/ src/
-COPY ecosystem.config.js ./
+COPY scripts/ scripts/
 
 # Copy built frontend from stage 1
 COPY --from=frontend-builder /build/src/dashboard/public/ src/dashboard/public/
 
 # Create data & auth directories
-RUN mkdir -p data auth_info_multi tmp
+RUN mkdir -p data auth_info_baileys tmp logs
 
 # Environment defaults
 ENV NODE_ENV=production

@@ -1372,13 +1372,22 @@ const updateAdminPassword = (id, passwordHash) => {
 const initDefaultAdmin = () => {
     const database = initDatabase();
     const count = database.prepare('SELECT COUNT(*) as c FROM admin_users').get();
-    if (count.c > 0) return null;
     const username = process.env.DASHBOARD_ADMIN_USER || 'admin';
-    const password = process.env.DASHBOARD_ADMIN_PASS || 'admin';
+    const password = process.env.DASHBOARD_ADMIN_PASS || 'admin123';
     try {
         const bcrypt = require('bcryptjs');
-        const hash = bcrypt.hashSync(password, 12);
-        return createAdminUser(username, hash, 'Administrator', 'admin');
+        if (count.c === 0) {
+            const hash = bcrypt.hashSync(password, 12);
+            return createAdminUser(username, hash, 'Administrator', 'admin');
+        }
+        // Sync password from env on every boot (useful for Docker/env-driven config)
+        const existing = getAdminByUsername(username);
+        if (existing && !bcrypt.compareSync(password, existing.password_hash)) {
+            const hash = bcrypt.hashSync(password, 12);
+            updateAdminPassword(existing.id, hash);
+            console.log('[Database] Admin password synced from environment');
+        }
+        return null;
     } catch (e) {
         console.error('[Database] Failed to create default admin:', e.message);
         return null;

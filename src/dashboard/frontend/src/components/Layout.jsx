@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { cn } from '../lib/utils';
 import {
     LayoutDashboard, ShieldCheck, Settings2, ToggleLeft,
-    MessageCircle, BarChart3, ScrollText, Wrench, LogOut, Bot
+    MessageCircle, BarChart3, ScrollText, Wrench, LogOut, Bot, Terminal
 } from 'lucide-react';
 
 const NAV = [
@@ -14,6 +14,7 @@ const NAV = [
     { to: '/chats', icon: MessageCircle, label: 'Chat Monitor' },
     { to: '/analytics', icon: BarChart3, label: 'Analytics' },
     { to: '/logs', icon: ScrollText, label: 'Activity Logs' },
+    { to: '/server-logs', icon: Terminal, label: 'Server Logs' },
     { to: '/settings', icon: Wrench, label: 'Settings' },
 ];
 

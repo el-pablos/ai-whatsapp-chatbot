@@ -12,6 +12,7 @@ const {
     getUserScheduledMessages: dbGetUserScheduled,
 } = require('./database');
 const { parseTimeString } = require('./reminderHandler');
+const { isAllowed } = require('./allowlistManager');
 
 /**
  * Jadwalkan pesan
@@ -72,6 +73,12 @@ const processPendingMessages = async (sendMessage) => {
 
     for (const msg of pending) {
         try {
+            // Skip if target was removed from allowlist
+            if (!isAllowed(msg.target_chat_id)) {
+                dbMarkSent(msg.id);
+                console.log(`[SCHEDULED] Skipped #${msg.id} — ${msg.target_chat_id} not in allowlist`);
+                continue;
+            }
             await sendMessage(msg.target_chat_id, msg.message_text);
             dbMarkSent(msg.id);
             sent++;

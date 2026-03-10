@@ -4,6 +4,10 @@
 
 jest.mock('../src/database');
 jest.mock('../src/reminderHandler');
+jest.mock('../src/allowlistManager', () => ({
+    isAllowed: jest.fn().mockReturnValue(true),
+    normalizePhone: jest.fn(jid => jid),
+}));
 
 const {
     scheduleMessage,
@@ -15,11 +19,13 @@ const {
 
 const db = require('../src/database');
 const { parseTimeString } = require('../src/reminderHandler');
+const { isAllowed } = require('../src/allowlistManager');
 
 describe('Scheduled Message Handler', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        isAllowed.mockReturnValue(true);
         db.createScheduledMessage.mockReturnValue({ id: 1 });
         db.getPendingScheduledMessages.mockReturnValue([]);
         db.getUserScheduledMessages.mockReturnValue([]);

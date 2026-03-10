@@ -8,6 +8,7 @@
  */
 
 const cron = require('node-cron');
+const { isAllowed } = require('./allowlistManager');
 const {
     createReminder: dbCreateReminder,
     getPendingReminders,
@@ -156,6 +157,12 @@ const startReminderCron = (sock) => {
             const pending = getPendingReminders();
             for (const reminder of pending) {
                 try {
+                    // Skip if user was removed from allowlist
+                    if (!isAllowed(reminder.chat_id)) {
+                        markReminderDone(reminder.id);
+                        console.log(`[Reminder] Skipped #${reminder.id} — ${reminder.chat_id} not in allowlist`);
+                        continue;
+                    }
                     await sock.sendMessage(reminder.chat_id, {
                         text: formatReminderMessage(reminder),
                     });

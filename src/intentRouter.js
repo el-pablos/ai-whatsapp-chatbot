@@ -17,7 +17,7 @@
 
 const { orchestrate, orchestrateVision, parseFileMarker } = require('./aiOrchestrator');
 const { normalizeMessage } = require('./messageNormalizer');
-const { smartSend, multiBubbleSend } = require('./messageUtils');
+const { smartSend, multiBubbleSend, resilientSend } = require('./messageUtils');
 const { clearConversation, getStats } = require('./database');
 const { formatCalendarResponse, parseDateFromString } = require('./calendarHandler');
 const { createAndSendFile } = require('./fileCreator');
@@ -482,7 +482,7 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
 
         // Send QR code image
         if (response.qrBuffer) {
-            await sock.sendMessage(chatId, {
+            await resilientSend(sock, chatId, {
                 image: response.qrBuffer,
                 caption: `📱 QR Code generated`,
             }, { quoted: ctx.rawMsg });
@@ -493,19 +493,19 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
             const axios = require('axios');
             try {
                 const gifResp = await axios.get(response.gif.url, { responseType: 'arraybuffer', timeout: 15000 });
-                await sock.sendMessage(chatId, {
+                await resilientSend(sock, chatId, {
                     video: Buffer.from(gifResp.data),
                     gifPlayback: true,
                     caption: response.gif.title || '',
                 }, { quoted: ctx.rawMsg });
             } catch (gifErr) {
-                await sock.sendMessage(chatId, { text: `🎭 ${response.gif.url}` }, { quoted: ctx.rawMsg });
+                await resilientSend(sock, chatId, { text: `🎭 ${response.gif.url}` }, { quoted: ctx.rawMsg });
             }
         }
 
         // Send AI-generated image
         if (response.imageBuffer) {
-            await sock.sendMessage(chatId, {
+            await resilientSend(sock, chatId, {
                 image: response.imageBuffer,
                 caption: response.revisedPrompt ? `🎨 ${response.revisedPrompt}` : '🎨 Image generated',
             }, { quoted: ctx.rawMsg });
@@ -513,7 +513,7 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
 
         // Send extracted PDF
         if (response.pdfBuffer) {
-            await sock.sendMessage(chatId, {
+            await resilientSend(sock, chatId, {
                 document: response.pdfBuffer,
                 fileName: 'extracted.pdf',
                 mimetype: 'application/pdf',
@@ -542,12 +542,12 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
             const fs = require('fs');
             if (fs.existsSync(mediaPath)) {
                 if (response.media.type === 'audio') {
-                    await sock.sendMessage(chatId, {
+                    await resilientSend(sock, chatId, {
                         audio: { url: mediaPath },
                         mimetype: 'audio/mpeg',
                     }, { quoted: ctx.rawMsg });
                 } else {
-                    await sock.sendMessage(chatId, {
+                    await resilientSend(sock, chatId, {
                         video: { url: mediaPath },
                         mimetype: 'video/mp4',
                     }, { quoted: ctx.rawMsg });
@@ -565,7 +565,7 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
             if (fileInfo && fileInfo.hasFile) {
                 // Send intro text before file if present
                 if (fileInfo.preText) {
-                    await sock.sendMessage(chatId, { text: fileInfo.preText }, { quoted: ctx.rawMsg });
+                    await resilientSend(sock, chatId, { text: fileInfo.preText }, { quoted: ctx.rawMsg });
                 }
                 await createAndSendFile(sock, chatId, fileInfo.content, fileInfo.fileName, {
                     quoted: fileInfo.preText ? undefined : ctx.rawMsg,

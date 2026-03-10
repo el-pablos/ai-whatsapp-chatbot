@@ -22,6 +22,33 @@ const MESSAGE_DELAY = 500;
 // Multi-bubble delimiter — AI uses this to split responses into separate WA messages
 const BUBBLE_DELIMITER = '---BUBBLE---';
 
+// Retry config for not-acceptable errors
+const MAX_SEND_RETRIES = 2;
+const RETRY_DELAY = 1500;
+
+/**
+ * Resilient sendMessage wrapper — retries on "not-acceptable" Baileys errors.
+ * These occur when session/encryption keys for a recipient are stale.
+ *
+ * @param {Object} sock - Baileys socket instance
+ * @param {string} recipient - Recipient JID
+ * @param {Object} content - Message content ({ text, image, etc })
+ * @param {Object} [msgOptions] - Baileys sendMessage options
+ * @returns {Promise<Object>} - Send result
+ */
+const resilientSend = async (sock, recipient, content, msgOptions = {}) => {
+    for (let attempt = 0; attempt <= MAX_SEND_RETRIES; attempt++) {
+        try {
+            return await sock.sendMessage(recipient, content, msgOptions);
+        } catch (err) {
+            const isRetryable = /not.acceptable|bad-mac|stream:error/i.test(err?.message || '');
+            if (!isRetryable || attempt === MAX_SEND_RETRIES) throw err;
+            console.warn(`[MessageUtils] Retryable error (attempt ${attempt + 1}/${MAX_SEND_RETRIES}): ${err.message}`);
+            await sleep(RETRY_DELAY * (attempt + 1));
+        }
+    }
+};
+
 /**
  * Split long text into multiple messages
  * Tries to split at natural break points (paragraphs, lines, sentences)
@@ -152,7 +179,7 @@ const sendChunkedMessages = async (sock, recipient, messages, options = {}) => {
         
         try {
             console.log(`[MessageUtils] Sending chunk ${i + 1}/${messages.length} (${textToSend.length} chars)`);
-            const result = await sock.sendMessage(recipient, { text: textToSend }, msgOptions);
+            const result = await resilientSend(sock, recipient, { text: textToSend }, msgOptions);
             console.log(`[MessageUtils] Chunk ${i + 1} sent successfully, msgId: ${result?.key?.id || 'unknown'}`);
         } catch (sendError) {
             console.error(`[MessageUtils] FAILED to send chunk ${i + 1}:`, sendError.message);
@@ -263,7 +290,7 @@ const multiBubbleSend = async (sock, recipient, text, options = {}) => {
     for (let i = 0; i < bubbles.length; i++) {
         const msgOptions = i === 0 && quoted ? { quoted } : {};
         try {
-            await sock.sendMessage(recipient, { text: bubbles[i] }, msgOptions);
+            await resilientSend(sock, recipient, { text: bubbles[i] }, msgOptions);
         } catch (err) {
             console.error(`[MessageUtils] Failed to send bubble ${i + 1}/${bubbles.length}:`, err.message);
             throw err;
@@ -279,6 +306,7 @@ module.exports = {
     findBestSplitPoint,
     sendChunkedMessages,
     smartSend,
+    resilientSend,
     parseBubbles,
     multiBubbleSend,
     sleep,

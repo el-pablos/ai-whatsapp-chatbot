@@ -26,6 +26,9 @@ require('./autoSetup');
 // Load environment variables
 require('dotenv').config();
 
+// Activate runtime log capture for dashboard streaming
+require('./dashboard/runtimeLogger').activateIntercept();
+
 const crypto = require('crypto');
 const makeWASocket = require('@whiskeysockets/baileys').default;
 const { 

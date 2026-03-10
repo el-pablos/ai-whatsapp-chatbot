@@ -61,6 +61,8 @@ const {
     initDatabase,
 } = require('../database');
 
+const { handleSSE, getRecentLogs, getLogStats, clearLogs } = require('./runtimeLogger');
+
 const DASHBOARD_PORT = process.env.DASHBOARD_PORT || 6680;
 const SESSION_HOURS = parseInt(process.env.DASHBOARD_SESSION_HOURS, 10) || 24;
 
@@ -442,6 +444,33 @@ app.post('/api/system/cleanup', requireAuth, (req, res) => {
     } catch (err) {
         return res.status(500).json({ success: false, error: err.message });
     }
+});
+
+// ═══════════════════════════════════════════════════════════
+//  RUNTIME LOGS API (Server Logs Command Center)
+// ═══════════════════════════════════════════════════════════
+
+// SSE stream — real-time log streaming
+app.get('/api/runtime-logs/stream', requireAuth, (req, res) => {
+    handleSSE(req, res);
+});
+
+// REST — get recent logs
+app.get('/api/runtime-logs', requireAuth, (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 200, 2000);
+    return res.json({ success: true, data: getRecentLogs(limit) });
+});
+
+// REST — get log stats
+app.get('/api/runtime-logs/stats', requireAuth, (req, res) => {
+    return res.json({ success: true, data: getLogStats() });
+});
+
+// REST — clear logs
+app.post('/api/runtime-logs/clear', requireAuth, (req, res) => {
+    clearLogs();
+    logActivity(req.admin.admin_id, 'logs_clear', null, null, req.ip);
+    return res.json({ success: true, data: null });
 });
 
 // ═══════════════════════════════════════════════════════════
