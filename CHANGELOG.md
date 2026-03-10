@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.1] - 2025-07-23
+
+### 🐛 BUGFIX V1.0 — 4 Critical Fixes
+
+### Fixed
+- **[BUGFIX-V1] Allowlist bypass**: `isAllowed()` now uses `getTotalAllowlistCount()` instead of `getActiveAllowlistCount()` — inactive entries no longer open the gate. Fail-safe changed from fail-open (`return true`) to fail-close (`return false`) on DB error. Added denial logging in bot.js.
+- **[BUGFIX-V2] Single-bubble response**: Added `---BUBBLE---` delimiter support in AI prompt (aiHandler.js), `parseBubbles()` and `multiBubbleSend()` in messageUtils.js, wired into intentRouter.js so AI can send multi-bubble WhatsApp responses naturally.
+- **[BUGFIX-V3] Phantom tool execution**: Added `detectActionIntent()` and `hasPhantomPromise()` in aiOrchestrator.js to detect when AI promises action without calling a tool. Auto-retries with `tool_choice=required`. Strengthened TOOL_USE_INSTRUCTIONS with anti-phantom rules.
+- **[BUGFIX-V4] Baileys session loss**: Added `backupCreds()` and `restoreCredsFromBackup()` — creds.json is backed up after every successful update. `cleanupInvalidAuth()` now tries restore before deleting. Added `isInitialConnect` guard (cleanup only on first boot). Changed browser fingerprint to `macOS Safari`. Added 5-minute session health check interval.
+
+### Added
+- `getTotalAllowlistCount()` in database.js
+- `BUBBLE_DELIMITER`, `parseBubbles()`, `multiBubbleSend()` in messageUtils.js
+- `detectActionIntent()`, `hasPhantomPromise()` in aiOrchestrator.js
+- `backupCreds()`, `restoreCredsFromBackup()` in bot.js
+- Session health check (5-min interval) in bot.js
+- 31 new tests (allowlist: 3, messageUtils: 13, orchestrator: 15)
+
+### Changed
+- `isAllowed()` uses totalCount instead of activeCount
+- DB error in allowlist → blocks instead of allows
+- `intentRouter.js` uses `multiBubbleSend` instead of `smartSend` for normal responses
+- Browser fingerprint: `Browsers.ubuntu('Chrome')` → `Browsers.macOS('Safari')`
+- `cleanupInvalidAuth()` tries backup restore before deleting
+
 ## [4.1.0] - 2025-07-08
 
 ### 🛡️ Dashboard Admin + Allowlist + Feature Toggle + Docker

@@ -1,6 +1,6 @@
 {
   "name": "ai-whatsapp-chatbot",
-  "version": "5.0.0",
+  "version": "5.0.1",
   "main": "src/bot.js",
   "engines": {
     "node": ">=20.0.0"
