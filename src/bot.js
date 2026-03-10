@@ -87,6 +87,7 @@ const baileysLogger = pino({ level: 'error' });
 let sock = null;
 let isConnecting = false;
 let reconnectAttempts = 0;
+let isInitialConnect = true; // Track first connection attempt
 
 let pairingCodeRequested = false;
 let pairingCodeTimeout = null; // Auto-retry timer for expired pairing codes
@@ -175,6 +176,54 @@ const hasValidCredentials = () => {
 };
 
 /**
+ * Backup creds.json to creds.json.bak after successful save.
+ * Called after every creds.update event.
+ */
+const backupCreds = () => {
+    try {
+        const credsPath = path.join(AUTH_FOLDER, 'creds.json');
+        const backupPath = path.join(AUTH_FOLDER, 'creds.json.bak');
+        if (fs.existsSync(credsPath)) {
+            const content = fs.readFileSync(credsPath, 'utf8');
+            // Only backup if content looks valid (has me.id and registered)
+            try {
+                const creds = JSON.parse(content);
+                if (creds.me?.id && creds.registered === true) {
+                    fs.writeFileSync(backupPath, content);
+                }
+            } catch {
+                // Don't backup corrupt JSON
+            }
+        }
+    } catch (err) {
+        console.error('[Auth] Backup creds failed:', err.message);
+    }
+};
+
+/**
+ * Try to restore creds from backup file.
+ * @returns {boolean} true if restore was successful
+ */
+const restoreCredsFromBackup = () => {
+    try {
+        const credsPath = path.join(AUTH_FOLDER, 'creds.json');
+        const backupPath = path.join(AUTH_FOLDER, 'creds.json.bak');
+        if (fs.existsSync(backupPath)) {
+            const content = fs.readFileSync(backupPath, 'utf8');
+            const creds = JSON.parse(content);
+            if (creds.me?.id && creds.registered === true) {
+                fs.writeFileSync(credsPath, content);
+                console.log('[Auth] Restored creds from backup');
+                return true;
+            }
+        }
+    } catch (err) {
+        console.error('[Auth] Restore from backup failed:', err.message);
+    }
+    return false;
+};
+
+/**
  * Clean up invalid/corrupt auth files.
  * Only called on initial boot — NOT on 515 reconnects where partial
  * auth (me.id + registered=false) is a normal transitional state.
@@ -197,6 +246,8 @@ const cleanupInvalidAuth = (force = false) => {
                 if (creds.me?.id && creds.registered !== true) {
                     if (force) {
                         console.log('[Auth] Force-wiping partial auth (me.id exists, registered=false)');
+                        // Try restore from backup first
+                        if (restoreCredsFromBackup()) return false;
                         fs.unlinkSync(credsPath);
                         return true;
                     }
@@ -208,12 +259,16 @@ const cleanupInvalidAuth = (force = false) => {
                 // No me.id at all — never paired
                 if (!creds.me?.id) {
                     console.log('[Auth] No pairing found (no me.id), cleaning up for fresh start');
+                    // Try restore from backup first
+                    if (restoreCredsFromBackup()) return false;
                     fs.unlinkSync(credsPath);
                     return true;
                 }
             } catch (e) {
-                // Invalid JSON, remove it
-                console.log('[Auth] Removing corrupt auth file');
+                // Invalid JSON — try restore from backup before deleting
+                console.log('[Auth] Corrupt auth file detected');
+                if (restoreCredsFromBackup()) return false;
+                console.log('[Auth] Removing corrupt auth file (no backup available)');
                 fs.unlinkSync(credsPath);
                 return true;
             }
@@ -246,8 +301,11 @@ const connectToWhatsApp = async () => {
             fs.mkdirSync(AUTH_FOLDER, { recursive: true });
         }
         
-        // Cleanup invalid/corrupt auth before loading
-        cleanupInvalidAuth();
+        // Cleanup invalid/corrupt auth before loading (only on first boot)
+        if (isInitialConnect) {
+            cleanupInvalidAuth();
+            isInitialConnect = false;
+        }
         
         // Load auth state dari folder
         const { state, saveCreds } = await useMultiFileAuthState(AUTH_FOLDER);
@@ -268,7 +326,7 @@ const connectToWhatsApp = async () => {
                 creds: state.creds,
                 keys: makeCacheableSignalKeyStore(state.keys, baileysLogger)
             },
-            browser: Browsers.ubuntu('Chrome'),
+            browser: Browsers.macOS('Safari'),
             printQRInTerminal: false,
             logger: baileysLogger,
             markOnlineOnConnect: true,
@@ -281,8 +339,11 @@ const connectToWhatsApp = async () => {
             }
         });
 
-        // Handle credentials update
-        sock.ev.on('creds.update', saveCreds);
+        // Handle credentials update — save and backup
+        sock.ev.on('creds.update', async () => {
+            await saveCreds();
+            backupCreds();
+        });
 
         // Handle connection update
         sock.ev.on('connection.update', (update) => handleConnectionUpdate(update, state));
@@ -497,6 +558,24 @@ const handleConnectionUpdate = async (update, state) => {
         } catch (cronErr) {
             console.error('[Bot] Failed to start cron jobs:', cronErr.message);
         }
+
+        // ═══════════════════════════════════════════════════════════
+        // SESSION HEALTH CHECK — verify creds.json exists periodically
+        // ═══════════════════════════════════════════════════════════
+        const SESSION_HEALTH_INTERVAL = 5 * 60 * 1000; // every 5 minutes
+        const sessionHealthCheck = setInterval(() => {
+            const credsPath = path.join(AUTH_FOLDER, 'creds.json');
+            if (!fs.existsSync(credsPath)) {
+                console.error('[Auth] creds.json MISSING — attempting restore from backup');
+                if (!restoreCredsFromBackup()) {
+                    console.error('[Auth] No backup available, session may be lost');
+                }
+            }
+        }, SESSION_HEALTH_INTERVAL);
+        // Clean up interval on disconnect
+        sock.ev.on('connection.update', ({ connection: conn }) => {
+            if (conn === 'close') clearInterval(sessionHealthCheck);
+        });
     }
 };
 
