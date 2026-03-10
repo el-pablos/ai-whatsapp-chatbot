@@ -69,6 +69,7 @@ jest.mock('../src/fileCreator', () => ({
 }));
 jest.mock('../src/messageUtils', () => ({
     smartSend: jest.fn(),
+    multiBubbleSend: jest.fn(),
     splitMessage: jest.fn((t) => [t]),
     WA_MESSAGE_LIMIT: 4096,
 }));
@@ -78,7 +79,7 @@ jest.mock('@whiskeysockets/baileys', () => ({
 
 const { routeMessage, FAST_COMMANDS, PREFIX_COMMANDS } = require('../src/intentRouter');
 const { clearConversation, getStats, isOwner } = require('../src/database');
-const { smartSend } = require('../src/messageUtils');
+const { smartSend, multiBubbleSend } = require('../src/messageUtils');
 const { orchestrate } = require('../src/aiOrchestrator');
 
 // Helper: create a fake sock
@@ -116,8 +117,9 @@ describe('Intent Router', () => {
         const { isFeatureEnabled: ife } = require('../src/database');
         ife.mockReturnValue(true);
         orchestrate.mockResolvedValue({ text: 'AI response' });
-        const { smartSend: ss } = require('../src/messageUtils');
+        const { smartSend: ss, multiBubbleSend: mbs } = require('../src/messageUtils');
         ss.mockImplementation(async () => {});
+        mbs.mockImplementation(async () => {});
         const { parseFileMarker: pf } = require('../src/fileCreator');
         pf.mockReturnValue(null);
     });
@@ -320,14 +322,14 @@ describe('Intent Router', () => {
             expect(sock.sendPresenceUpdate).toHaveBeenCalledWith('composing', msg.chatId);
         });
 
-        test('should send AI response via smartSend', async () => {
+        test('should send AI response via multiBubbleSend', async () => {
             const sock = makeSock();
             const msg = makeMsg({ text: 'cuaca gimana?' });
             orchestrate.mockResolvedValueOnce({ text: 'cerah bro' });
 
             await routeMessage(msg, { sock, rawMsg: msg.raw });
 
-            expect(smartSend).toHaveBeenCalledWith(
+            expect(multiBubbleSend).toHaveBeenCalledWith(
                 sock, msg.chatId, 'cerah bro', expect.objectContaining({ quoted: msg.raw }),
             );
         });

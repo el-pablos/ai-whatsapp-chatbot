@@ -3,7 +3,7 @@
  * Message splitting and chunked sending functionality
  */
 
-const { splitMessage, WA_MESSAGE_LIMIT, MESSAGE_DELAY } = require('../src/messageUtils');
+const { splitMessage, parseBubbles, multiBubbleSend, WA_MESSAGE_LIMIT, MESSAGE_DELAY, BUBBLE_DELIMITER } = require('../src/messageUtils');
 
 describe('messageUtils', () => {
     describe('splitMessage', () => {
@@ -207,6 +207,107 @@ Kartu ini menunjukkan intuisi...
             chunks.forEach(chunk => {
                 expect(chunk.length).toBeLessThanOrEqual(100);
             });
+        });
+    });
+
+    describe('BUBBLE_DELIMITER', () => {
+        it('should be ---BUBBLE---', () => {
+            expect(BUBBLE_DELIMITER).toBe('---BUBBLE---');
+        });
+    });
+
+    describe('parseBubbles', () => {
+        it('should return single element for text without delimiter', () => {
+            const result = parseBubbles('hello cuy');
+            expect(result).toEqual(['hello cuy']);
+        });
+
+        it('should split text at BUBBLE_DELIMITER', () => {
+            const text = 'hey\n---BUBBLE---\napa kabar';
+            const result = parseBubbles(text);
+            expect(result).toEqual(['hey', 'apa kabar']);
+        });
+
+        it('should handle multiple delimiters', () => {
+            const text = 'satu\n---BUBBLE---\ndua\n---BUBBLE---\ntiga';
+            const result = parseBubbles(text);
+            expect(result).toEqual(['satu', 'dua', 'tiga']);
+        });
+
+        it('should trim whitespace from bubbles', () => {
+            const text = '  hey  \n---BUBBLE---\n  cuy  ';
+            const result = parseBubbles(text);
+            expect(result).toEqual(['hey', 'cuy']);
+        });
+
+        it('should filter out empty bubbles', () => {
+            const text = 'hey\n---BUBBLE---\n\n---BUBBLE---\ncuy';
+            const result = parseBubbles(text);
+            expect(result).toEqual(['hey', 'cuy']);
+        });
+
+        it('should return empty array for empty input', () => {
+            expect(parseBubbles('')).toEqual([]);
+            expect(parseBubbles(null)).toEqual([]);
+            expect(parseBubbles(undefined)).toEqual([]);
+        });
+
+        it('should split long bubbles further via splitMessage', () => {
+            const longText = 'A'.repeat(5000);
+            const text = `short\n---BUBBLE---\n${longText}`;
+            const result = parseBubbles(text);
+            expect(result.length).toBeGreaterThan(2); // short + multiple chunks from longText
+        });
+    });
+
+    describe('multiBubbleSend', () => {
+        let mockSock;
+
+        beforeEach(() => {
+            mockSock = {
+                sendMessage: jest.fn().mockResolvedValue({ key: { id: 'test-id' } }),
+            };
+        });
+
+        it('should send single bubble as smartSend', async () => {
+            await multiBubbleSend(mockSock, 'chat@s.whatsapp.net', 'hello');
+            expect(mockSock.sendMessage).toHaveBeenCalledTimes(1);
+        });
+
+        it('should send multiple bubbles as separate messages', async () => {
+            const text = 'first\n---BUBBLE---\nsecond\n---BUBBLE---\nthird';
+            await multiBubbleSend(mockSock, 'chat@s.whatsapp.net', text);
+            expect(mockSock.sendMessage).toHaveBeenCalledTimes(3);
+        });
+
+        it('should quote only the first bubble', async () => {
+            const text = 'first\n---BUBBLE---\nsecond';
+            const quoted = { key: { id: 'quoted-msg' } };
+            await multiBubbleSend(mockSock, 'chat@s.whatsapp.net', text, { quoted });
+            expect(mockSock.sendMessage).toHaveBeenNthCalledWith(
+                1,
+                'chat@s.whatsapp.net',
+                { text: 'first' },
+                { quoted }
+            );
+            expect(mockSock.sendMessage).toHaveBeenNthCalledWith(
+                2,
+                'chat@s.whatsapp.net',
+                { text: 'second' },
+                {}
+            );
+        });
+
+        it('should do nothing for empty text', async () => {
+            await multiBubbleSend(mockSock, 'chat@s.whatsapp.net', '');
+            expect(mockSock.sendMessage).not.toHaveBeenCalled();
+        });
+
+        it('should throw on send failure', async () => {
+            mockSock.sendMessage.mockRejectedValue(new Error('send failed'));
+            await expect(
+                multiBubbleSend(mockSock, 'chat@s.whatsapp.net', 'a\n---BUBBLE---\nb')
+            ).rejects.toThrow('send failed');
         });
     });
 });

@@ -19,6 +19,9 @@ const WA_MESSAGE_LIMIT = 3800;
 // Delay between messages to avoid rate limiting (ms)
 const MESSAGE_DELAY = 500;
 
+// Multi-bubble delimiter — AI uses this to split responses into separate WA messages
+const BUBBLE_DELIMITER = '---BUBBLE---';
+
 /**
  * Split long text into multiple messages
  * Tries to split at natural break points (paragraphs, lines, sentences)
@@ -206,14 +209,82 @@ const formatWithPartIndicator = (text, part, total) => {
     return `${text}\n\n_━━━ Bagian ${part}/${total} ━━━_`;
 };
 
+/**
+ * Parse AI response into separate bubbles using BUBBLE_DELIMITER.
+ * Each bubble that exceeds WA_MESSAGE_LIMIT is further split via splitMessage.
+ *
+ * @param {string} text - Raw AI response text
+ * @returns {string[]} - Array of bubble strings ready to send
+ */
+const parseBubbles = (text) => {
+    if (!text) return [];
+
+    const rawBubbles = text.split(BUBBLE_DELIMITER)
+        .map(b => b.trim())
+        .filter(b => b.length > 0);
+
+    // If no delimiter was found, return as-is (will be handled by smartSend)
+    if (rawBubbles.length <= 1) return rawBubbles;
+
+    // Each bubble may still be too long — split further if needed
+    const result = [];
+    for (const bubble of rawBubbles) {
+        if (bubble.length > WA_MESSAGE_LIMIT) {
+            result.push(...splitMessage(bubble));
+        } else {
+            result.push(bubble);
+        }
+    }
+    return result;
+};
+
+/**
+ * Multi-bubble send — parse bubbles from AI response then send each as a separate WA message.
+ * Falls back to smartSend behavior if no BUBBLE_DELIMITER found.
+ *
+ * @param {Object} sock - Baileys socket instance
+ * @param {string} recipient - Recipient JID
+ * @param {string} text - AI response text (may contain ---BUBBLE---)
+ * @param {Object} options - Options (quoted, delay)
+ * @returns {Promise<void>}
+ */
+const multiBubbleSend = async (sock, recipient, text, options = {}) => {
+    const bubbles = parseBubbles(text);
+
+    if (bubbles.length === 0) return;
+
+    // If single bubble or no delimiter found, delegate to smartSend
+    if (bubbles.length === 1) {
+        return smartSend(sock, recipient, bubbles[0], options);
+    }
+
+    // Send each bubble as a separate message
+    const { quoted, delay = MESSAGE_DELAY } = options;
+    for (let i = 0; i < bubbles.length; i++) {
+        const msgOptions = i === 0 && quoted ? { quoted } : {};
+        try {
+            await sock.sendMessage(recipient, { text: bubbles[i] }, msgOptions);
+        } catch (err) {
+            console.error(`[MessageUtils] Failed to send bubble ${i + 1}/${bubbles.length}:`, err.message);
+            throw err;
+        }
+        if (i < bubbles.length - 1) {
+            await sleep(delay);
+        }
+    }
+};
+
 module.exports = {
     splitMessage,
     findBestSplitPoint,
     sendChunkedMessages,
     smartSend,
+    parseBubbles,
+    multiBubbleSend,
     sleep,
     estimateReadingTime,
     formatWithPartIndicator,
     WA_MESSAGE_LIMIT,
-    MESSAGE_DELAY
+    MESSAGE_DELAY,
+    BUBBLE_DELIMITER,
 };

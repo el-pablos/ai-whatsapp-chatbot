@@ -17,7 +17,7 @@
 
 const { orchestrate, orchestrateVision, parseFileMarker } = require('./aiOrchestrator');
 const { normalizeMessage } = require('./messageNormalizer');
-const { smartSend } = require('./messageUtils');
+const { smartSend, multiBubbleSend } = require('./messageUtils');
 const { clearConversation, getStats } = require('./database');
 const { formatCalendarResponse, parseDateFromString } = require('./calendarHandler');
 const { createAndSendFile } = require('./fileCreator');
@@ -572,8 +572,8 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
                     caption: `📄 *${fileInfo.fileName}*\n\n_tap buat save ke device lu_`,
                 });
             } else {
-                // Normal text response
-                await smartSend(sock, chatId, response.text, { quoted: ctx.rawMsg });
+                // Normal text response — multi-bubble aware
+                await multiBubbleSend(sock, chatId, response.text, { quoted: ctx.rawMsg });
             }
         }
 
