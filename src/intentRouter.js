@@ -411,10 +411,11 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
                 await sock.sendMessage(chatId, { text: `⚠️ Fitur ${featureId} lagi dimatiin sama admin.` }, { quoted: ctx.rawMsg });
                 return;
             }
+            const ownerJid = normalizedMsg.resolvedPhone || chatId;
             const result = await FAST_COMMANDS[lower](null, {
                 chatId,
                 sock,
-                isOwner: isOwner(chatId),
+                isOwner: isOwner(ownerJid),
             });
             if (result?.text) {
                 await sock.sendMessage(chatId, { text: result.text }, { quoted: ctx.rawMsg });
@@ -441,7 +442,8 @@ const routeMessage = async (normalizedMsg, ctx = {}) => {
                     }, { quoted: ctx.rawMsg });
                     return;
                 }
-                const result = await handler(args, { chatId, sock, isOwner: isOwner(chatId), senderId: normalizedMsg.senderId });
+                const ownerJidP = normalizedMsg.resolvedPhone || chatId;
+                const result = await handler(args, { chatId, sock, isOwner: isOwner(ownerJidP), senderId: normalizedMsg.senderId });
                 if (result === null) break; // fallthrough to orchestrator
                 if (result?.qrImage) {
                     await sock.sendMessage(chatId, {

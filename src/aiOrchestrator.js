@@ -103,8 +103,25 @@ const detectActionIntent = (text) => {
         /\b(gif)\b/,
         /\b(simpan|save|ingat)\b/,
         /\b(rangkum|summarize|summary)\b/,
+        // Document-related intents
+        /\b(baca(?:in|kan)?|read|extract)\b/,
+        /\b(analisis|analyz?e|review)\b/,
+        /\b(convert|konversi|ubah)\b.+\b(pdf|doc|txt)\b/,
+        /\b(isi(?:nya)?|konten|content)\b.+\b(dokumen|file|document)\b/,
+        /\b(tolong|bantu|coba)\b.+\b(baca|lihat|cek|proses)\b/,
+        /\b(apa\s+(isi|aja))\b/,
     ];
     return patterns.some(p => p.test(lower));
+};
+
+/**
+ * Detect if attachment type implies a tool call should happen.
+ * @param {Array} attachments — normalizedMsg.attachments
+ * @returns {boolean}
+ */
+const detectAttachmentIntent = (attachments) => {
+    if (!attachments || attachments.length === 0) return false;
+    return attachments.some(a => a.type === 'document' || a.type === 'audio');
 };
 
 /**
@@ -123,6 +140,12 @@ const hasPhantomPromise = (text) => {
         /\b(lagi|lg)\b.+\b(proses|buatin|bikinin|download|cariin)\b/,
         /\bw\b.+\b(buatin|bikinin|cariin|downloadin|translatein)\b/,
         /\b(udah|dah)\b.+\b(w|gw)\b.+\b(buatin|bikinin)\b/,
+        // Document phantom promises
+        /\b(w|gw|aku)\b.+\b(baca(?:in)?|extract|proses|lihat)\b.+\b(dulu|dl|dlu)\b/,
+        /\bbntar\b.+\b(baca|extract|proses)\b/,
+        /\b(oke|gas|sip)\b.+\b(baca|extract|analisis)\b/,
+        /\b(lagi|lg)\b.+\b(baca|extract|analisis|proses)\b/,
+        /\b(coba|mau)\b.+\b(baca|lihat|cek)\b.+\b(isi|konten)\b/,
     ];
     return promisePatterns.some(p => p.test(lower));
 };
@@ -214,7 +237,9 @@ const orchestrate = async (normalizedMsg, ctx = {}) => {
     }
 
     // ── 2. Profile & preferences ──────────────────────────
-    const profile = classifyUser(senderId, pushName);
+    // Use resolvedPhone (from lidResolver) so @lid owners get detected
+    const profileJid = normalizedMsg.resolvedPhone || senderId;
+    const profile = classifyUser(profileJid, pushName);
     const preferredName = getPreferredName(chatId) || null;
     const isOwner = profile.isOwner;
 
@@ -258,11 +283,19 @@ JANGAN hanya menjawab dengan teks. WAJIB panggil kedua tool tersebut.`,
         });
         console.log(`[Orchestrator] PPTX hint injected (forceToolUse=true) | chatId=${chatId} slideCount=${pptxDetection.slideCount}`);
     } else if (hasDocAttachment) {
-        // User sent a document → remind about document_extract_text
+        // User sent a document → FORCE tool use to extract/read it
+        forceToolUse = true;
         messages.push({
             role: 'system',
-            content: `[HINT] User mengirim dokumen. Gunakan tool document_extract_text untuk membaca isi dokumen jika diperlukan.`,
+            content: `[INSTRUKSI WAJIB] User mengirim dokumen/file. Kamu WAJIB panggil tool document_extract_text untuk membaca isi dokumen tersebut SEBELUM menjawab. JANGAN hanya menjawab dengan teks tanpa membaca dokumen.`,
         });
+        console.log(`[Orchestrator] Document force-tool hint injected (forceToolUse=true) | chatId=${chatId}`);
+    }
+
+    // Force tool use when text implies action AND attachment exists
+    if (!forceToolUse && detectAttachmentIntent(normalizedMsg.attachments) && text && detectActionIntent(text)) {
+        forceToolUse = true;
+        console.log(`[Orchestrator] Attachment+intent force-tool | chatId=${chatId}`);
     }
 
     // ── 6. Choose tools for this user ─────────────────────
@@ -300,8 +333,9 @@ JANGAN hanya menjawab dengan teks. WAJIB panggil kedua tool tersebut.`,
         while (iteration < MAX_TOOL_ITERATIONS) {
             iteration++;
 
-            // Force tool_choice='required' on first iteration when PPTX/document action is detected
-            const toolChoice = (forceToolUse && iteration === 1) ? 'required' : 'auto';
+            // Force tool_choice='required' on first iteration when action is detected
+            // But only if tools array is non-empty (required with no tools = API error)
+            const toolChoice = (forceToolUse && iteration === 1 && tools && tools.length > 0) ? 'required' : 'auto';
             if (toolChoice === 'required') {
                 console.log(`[Orchestrator] Using tool_choice=required (iter=${iteration}) | chatId=${chatId}`);
             }
@@ -321,7 +355,8 @@ JANGAN hanya menjawab dengan teks. WAJIB panggil kedua tool tersebut.`,
                 finalText = msg.content || '';
 
                 // Phantom promise detection: AI promised action but didn't call a tool
-                if (iteration === 1 && !forceToolUse && detectActionIntent(text) && hasPhantomPromise(finalText)) {
+                const textImpliesAction = detectActionIntent(text) || detectAttachmentIntent(normalizedMsg.attachments);
+                if (iteration === 1 && !forceToolUse && textImpliesAction && hasPhantomPromise(finalText)) {
                     console.log(`[Orchestrator] Phantom promise detected, retrying with tool_choice=required | chatId=${chatId}`);
                     forceToolUse = true;
                     messages.push({
@@ -607,6 +642,7 @@ module.exports = {
     parseWebSearchMarker,
     parseFileMarker,
     detectActionIntent,
+    detectAttachmentIntent,
     hasPhantomPromise,
     MAX_TOOL_ITERATIONS,
     MAX_RETRIES,

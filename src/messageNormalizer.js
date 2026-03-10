@@ -24,6 +24,8 @@
  * @version 1.0.0
  */
 
+const { resolveToPhone } = require('./lidResolver');
+
 // ═══════════════════════════════════════════════════════════
 // UNWRAP HELPERS
 // ═══════════════════════════════════════════════════════════
@@ -243,6 +245,7 @@ const normalizeMessage = (msg) => {
     return {
         chatId,
         senderId,
+        resolvedPhone: resolveToPhone(senderId),
         pushName: msg.pushName || 'User',
         isGroup,
         isFromMe,

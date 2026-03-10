@@ -49,6 +49,7 @@ const path = require('path');
 // ═══════════════════════════════════════════════════════════
 const { normalizeMessage } = require('./messageNormalizer');
 const { routeMessage } = require('./intentRouter');
+const { initLidDatabase, registerFromContacts, registerFromMe } = require('./lidResolver');
 
 // Legacy imports (still used for lifecycle / helpers)
 const { startHealthCheckServer } = require('./healthCheck');
@@ -298,6 +299,9 @@ const connectToWhatsApp = async () => {
         // Initialize database
         initDatabase();
         scheduleRetentionCleanup();
+
+        // Initialize LID resolver with shared DB instance
+        initLidDatabase(initDatabase());
         
         // Ensure auth folder exists
         if (!fs.existsSync(AUTH_FOLDER)) {
@@ -353,6 +357,14 @@ const connectToWhatsApp = async () => {
 
         // Handle incoming messages
         sock.ev.on('messages.upsert', handleMessagesUpsert);
+
+        // Handle contacts — register LID↔phone mappings from Baileys
+        sock.ev.on('contacts.update', (contacts) => {
+            registerFromContacts(contacts);
+        });
+        sock.ev.on('contacts.upsert', (contacts) => {
+            registerFromContacts(contacts);
+        });
 
         console.log('[Bot] Socket created, waiting for connection...');
 
@@ -484,6 +496,8 @@ const handleConnectionUpdate = async (update, state) => {
         // Log connected user info
         const me = state.creds?.me || sock.user;
         if (me) {
+            // Register bot's own LID↔phone mapping
+            registerFromMe(me);
             console.log('╔═══════════════════════════════════════════════════════════╗');
             console.log('║        ✅ WHATSAPP CONNECTED SUCCESSFULLY!               ║');
             console.log('╠═══════════════════════════════════════════════════════════╣');

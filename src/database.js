@@ -1128,6 +1128,12 @@ const ALLOWLIST_CACHE_TTL = 5 * 60 * 1000;
 
 const normalizePhoneNumber = (phone) => {
     if (!phone) return '';
+    // Try lidResolver for @lid JIDs
+    try {
+        const { resolveToPhone } = require('./lidResolver');
+        const resolved = resolveToPhone(phone);
+        if (resolved) return resolved;
+    } catch { /* lidResolver not yet initialized — fall through */ }
     let cleaned = phone.replace(/[^\d]/g, '');
     // Strip @s.whatsapp.net / @g.us
     cleaned = cleaned.split('@')[0];
@@ -1276,6 +1282,7 @@ const initDefaultConfigs = () => {
         ['session_expiry_hours', String(process.env.SESSION_EXPIRY_HOURS || '24'), 'Session expiry in hours', 'number'],
         ['log_level', process.env.LOG_LEVEL || 'info', 'Log level', 'string'],
         ['bot_name', process.env.BOT_NAME || 'Tama', 'Bot display name', 'string'],
+        ['allowlist_mode', 'allowlist', 'Access mode: open | closed | allowlist', 'string'],
     ];
     const database = initDatabase();
     const stmt = database.prepare(

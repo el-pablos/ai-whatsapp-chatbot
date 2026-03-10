@@ -10,8 +10,10 @@
  * system-level context so the persona adjusts its tone.
  *
  * @author Tama El Pablo
- * @version 1.0.0
+ * @version 1.1.0
  */
+
+const { resolveToPhone, isLidJid } = require('./lidResolver');
 
 // ═══════════════════════════════════════════════════════════
 // OWNER PHONE NUMBERS (canonical, digits only, with 62 prefix)
@@ -25,16 +27,23 @@ const OWNER_PHONES = [
 // ═══════════════════════════════════════════════════════════
 
 /**
- * Strip JID suffix and non-digit characters to get a clean phone number.
- * Works for `@s.whatsapp.net`, `@lid`, `@g.us`, raw numbers, etc.
+ * Resolve JID to clean phone number (digits only).
+ * Uses lidResolver for @lid JIDs, falls back to digit extraction.
  *
  * @param {string} jidOrPhone
- * @returns {string} digits-only phone number
+ * @returns {string} digits-only phone number, or empty string if unresolvable
  */
 const normalizePhone = (jidOrPhone) => {
     if (!jidOrPhone) return '';
-    // Remove everything after @ (JID suffix), then keep only digits
-    return jidOrPhone.split('@')[0].replace(/\D/g, '');
+
+    // Try lidResolver first — handles @lid, @s.whatsapp.net, raw digits
+    const resolved = resolveToPhone(jidOrPhone);
+    if (resolved) return resolved;
+
+    // Fallback: strip JID suffix + non-digits (for @g.us, unknown formats)
+    let cleaned = jidOrPhone.split('@')[0].replace(/\D/g, '');
+    if (cleaned.startsWith('0')) cleaned = '62' + cleaned.slice(1);
+    return cleaned;
 };
 
 /**
