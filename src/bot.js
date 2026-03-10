@@ -49,7 +49,7 @@ const path = require('path');
 // ═══════════════════════════════════════════════════════════
 const { normalizeMessage } = require('./messageNormalizer');
 const { routeMessage } = require('./intentRouter');
-const { initLidDatabase, registerFromContacts, registerFromMe, registerMapping, isLidJid } = require('./lidResolver');
+const { initLidDatabase, registerFromContacts, registerFromMe, registerMapping, isLidJid, canResolve } = require('./lidResolver');
 
 // Direct handlers — bypass AI orchestrator for deterministic actions
 const { isStickerRequest, imageToSticker, videoToSticker, sendSticker } = require('./stickerHandler');
@@ -522,11 +522,9 @@ const handleConnectionUpdate = async (update, state) => {
                     if (results && results[0] && results[0].jid) {
                         if (isLidJid(results[0].jid)) {
                             registerMapping(results[0].jid, `${ownerPhone}@s.whatsapp.net`);
-                            console.log(`[Bot] Owner LID discovered: ${results[0].jid} → ${ownerPhone}`);
-                        } else {
-                            // returned JID is already phone format, register anyway
-                            registerMapping(results[0].jid, `${ownerPhone}@s.whatsapp.net`);
+                            console.log(`[Bot] Owner LID discovered via onWhatsApp: ${results[0].jid} → ${ownerPhone}`);
                         }
+                        // If returned JID is phone format, no LID to register — skip
                     }
                 }
             } catch (lidErr) {
@@ -716,6 +714,21 @@ const processMessage = async (msg) => {
     // Normalize message
     const normalized = normalizeMessage(msg);
     console.log(`[Bot] ${normalized.pushName} (${sender}): ${(normalized.text || `[${normalized.messageType}]`).slice(0, 80)}`);
+
+    // ═══ LID AUTO-LEARN ═══════════════════════════════════════
+    // When we get a DM from an @lid JID we can't resolve,
+    // try to discover the phone by querying Baileys.
+    if (isLidJid(sender) && !canResolve(sender) && sock) {
+        try {
+            // Try fetchStatus — some Baileys builds include phone in status response
+            const contactInfo = await sock.onWhatsApp(sender.split('@')[0]);
+            if (contactInfo?.[0]?.jid && !isLidJid(contactInfo[0].jid)) {
+                registerMapping(sender, contactInfo[0].jid);
+            }
+        } catch {
+            // Silently ignore — LID discovery is best-effort
+        }
+    }
 
     // Auto memory capture — detect and save implicit memory from chat
     if (normalized.text) {
