@@ -574,7 +574,8 @@ const processMessage = async (msg) => {
     // ALLOWLIST FILTER — check before any processing
     const senderNumber = msg.key.participant || sender;
     if (!isAllowed(senderNumber)) {
-        return; // Silent — no response, no logging
+        console.log(`[Bot] Allowlist denied: ${senderNumber.split('@')[0]}`);
+        return;
     }
 
     // AI-FIRST: Normalize → Route

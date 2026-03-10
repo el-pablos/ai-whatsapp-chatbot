@@ -19,6 +19,7 @@ const {
     isPhoneAllowed,
     refreshAllowlistCache,
     getActiveAllowlistCount,
+    getTotalAllowlistCount,
     normalizePhoneNumber,
 } = require('./database');
 const { isOwnerPhone } = require('./userProfileHelper');
@@ -50,13 +51,14 @@ const isAllowed = (jid) => {
     // Owner is always allowed
     if (isOwnerPhone(jid)) return true;
 
-    // If allowlist is empty, allow all (backward compat)
+    // If allowlist has no entries at all, allow everyone (backward compat)
     try {
-        const activeCount = getActiveAllowlistCount();
-        if (activeCount === 0) return true;
+        const totalCount = getTotalAllowlistCount();
+        if (totalCount === 0) return true;
     } catch (e) {
-        // If DB error, allow to avoid blocking
-        return true;
+        // If DB error, BLOCK to prevent bypass
+        console.error('[Allowlist] DB error in isAllowed, blocking by default:', e.message);
+        return false;
     }
 
     // Extract phone from JID

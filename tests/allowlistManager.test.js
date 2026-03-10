@@ -9,6 +9,7 @@ jest.mock('../src/database', () => ({
     getAllowlist: jest.fn(),
     refreshAllowlistCache: jest.fn(),
     getActiveAllowlistCount: jest.fn(),
+    getTotalAllowlistCount: jest.fn(),
     normalizePhoneNumber: jest.fn((p) => p.replace(/\D/g, '').replace(/^0/, '62')),
     isPhoneAllowed: jest.fn(() => true),
 }));
@@ -39,6 +40,7 @@ describe('Allowlist Manager', () => {
         db.isPhoneAllowed.mockReturnValue(true);
         db.getAllowlist.mockReturnValue([]);
         db.getActiveAllowlistCount.mockReturnValue(0);
+        db.getTotalAllowlistCount.mockReturnValue(0);
         isOwnerPhone.mockImplementation((jid) => jid.includes('6282210819939'));
     });
 
@@ -47,21 +49,38 @@ describe('Allowlist Manager', () => {
             expect(isAllowed('6282210819939@s.whatsapp.net')).toBe(true);
         });
 
-        test('should allow everyone when allowlist is empty', () => {
-            db.getActiveAllowlistCount.mockReturnValue(0);
+        test('should allow everyone when allowlist is empty (totalCount=0)', () => {
+            db.getTotalAllowlistCount.mockReturnValue(0);
             expect(isAllowed('6289999999999@s.whatsapp.net')).toBe(true);
         });
 
-        test('should check allowlist when entries exist', () => {
-            db.getActiveAllowlistCount.mockReturnValue(5);
+        test('should check allowlist when entries exist (totalCount>0)', () => {
+            db.getTotalAllowlistCount.mockReturnValue(5);
             db.isPhoneAllowed.mockReturnValue(false);
             expect(isAllowed('6289999999999@s.whatsapp.net')).toBe(false);
         });
 
         test('should allow when phone is in allowlist', () => {
-            db.getActiveAllowlistCount.mockReturnValue(5);
+            db.getTotalAllowlistCount.mockReturnValue(5);
             db.isPhoneAllowed.mockReturnValue(true);
             expect(isAllowed('6289999999999@s.whatsapp.net')).toBe(true);
+        });
+
+        test('should BLOCK on DB error (fail-close)', () => {
+            db.getTotalAllowlistCount.mockImplementation(() => { throw new Error('DB locked'); });
+            expect(isAllowed('6289999999999@s.whatsapp.net')).toBe(false);
+        });
+
+        test('should still allow owner even on DB error', () => {
+            db.getTotalAllowlistCount.mockImplementation(() => { throw new Error('DB locked'); });
+            expect(isAllowed('6282210819939@s.whatsapp.net')).toBe(true);
+        });
+
+        test('should block when all entries are inactive but totalCount>0', () => {
+            db.getTotalAllowlistCount.mockReturnValue(3);
+            db.getActiveAllowlistCount.mockReturnValue(0);
+            db.isPhoneAllowed.mockReturnValue(false);
+            expect(isAllowed('6289999999999@s.whatsapp.net')).toBe(false);
         });
 
         test('should handle group JID', () => {

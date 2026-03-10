@@ -34,6 +34,7 @@ jest.mock('../src/database', () => ({
     refreshAllowlistCache: jest.fn(),
     normalizePhoneNumber: jest.fn((p) => p.replace(/\D/g, '').replace(/^0/, '62')),
     getActiveAllowlistCount: jest.fn(() => 0),
+    getTotalAllowlistCount: jest.fn(() => 0),
     setConfig: jest.fn(),
     getConfig: jest.fn(),
     getAllConfigs: jest.fn(() => ({})),

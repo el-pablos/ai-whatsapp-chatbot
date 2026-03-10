@@ -1219,6 +1219,12 @@ const getActiveAllowlistCount = () => {
     return row.count;
 };
 
+const getTotalAllowlistCount = () => {
+    const database = initDatabase();
+    const row = database.prepare('SELECT COUNT(*) as count FROM allowlist').get();
+    return row.count;
+};
+
 // ═══════════════════════════════════════════════════════════
 //  BOT CONFIG CRUD
 // ═══════════════════════════════════════════════════════════
@@ -1617,7 +1623,7 @@ module.exports = {
     isPhoneAllowed,
     refreshAllowlistCache,
     getActiveAllowlistCount,
-    // Bot config
+    getTotalAllowlistCount,
     setConfig,
     getConfig,
     getAllConfigs,
