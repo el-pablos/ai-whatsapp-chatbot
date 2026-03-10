@@ -16,8 +16,8 @@ module.exports = {
     apps: [
         {
             name: 'copilot-api',
-            cwd: '/root/work/copilot-api',
-            script: '/snap/bin/bun',
+            cwd: '/root/work/ai/copilot-api',
+            script: '/root/.bun/bin/bun',
             args: 'run ./src/main.ts start',
             interpreter: 'none',
             watch: false,
@@ -26,15 +26,15 @@ module.exports = {
             restart_delay: 5000,
             env: {
                 NODE_ENV: 'production',
-                PATH: '/snap/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+                PATH: '/root/.bun/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
             },
-            error_file: '/root/work/ai-whatsapp-chatbot/logs/copilot-api-error.log',
-            out_file: '/root/work/ai-whatsapp-chatbot/logs/copilot-api-out.log',
+            error_file: '/root/work/ai/ai-whatsapp-chatbot/logs/copilot-api-error.log',
+            out_file: '/root/work/ai/ai-whatsapp-chatbot/logs/copilot-api-out.log',
             log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
         },
         {
             name: 'wa-tama-bot',
-            cwd: '/root/work/ai-whatsapp-chatbot',
+            cwd: '/root/work/ai/ai-whatsapp-chatbot',
             script: 'scripts/start.sh',
             interpreter: 'bash',
             watch: false,
@@ -47,8 +47,8 @@ module.exports = {
             env: {
                 NODE_ENV: 'production'
             },
-            error_file: '/root/work/ai-whatsapp-chatbot/logs/wa-bot-error.log',
-            out_file: '/root/work/ai-whatsapp-chatbot/logs/wa-bot-out.log',
+            error_file: '/root/work/ai/ai-whatsapp-chatbot/logs/wa-bot-error.log',
+            out_file: '/root/work/ai/ai-whatsapp-chatbot/logs/wa-bot-out.log',
             log_date_format: 'YYYY-MM-DD HH:mm:ss Z'
         }
     ]
