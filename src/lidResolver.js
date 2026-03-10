@@ -25,6 +25,9 @@ const lidToPhoneCache = new Map();
 /** @type {Map<string, string>} phone number → LID user part (reverse lookup) */
 const phoneToLidCache = new Map();
 
+/** @type {Set<string>} LIDs already warned about — suppress repeat logs */
+const _warnedLids = new Set();
+
 // ═══════════════════════════════════════════════════════════
 //  DETECTION
 // ═══════════════════════════════════════════════════════════
@@ -215,8 +218,11 @@ const resolveToPhone = (jid) => {
         const phone = lidToPhoneCache.get(lidUser);
         if (phone) return phone;
 
-        // Tidak ada mapping — log warning (sekali per LID)
-        console.warn(`[LidResolver] Tidak bisa resolve LID ${lidUser} ke phone — mapping belum terdaftar`);
+        // Tidak ada mapping — log warning ONCE per LID (suppress spam)
+        if (!_warnedLids.has(lidUser)) {
+            _warnedLids.add(lidUser);
+            console.warn(`[LidResolver] Tidak bisa resolve LID ${lidUser} ke phone — mapping belum terdaftar`);
+        }
         return null;
     }
 

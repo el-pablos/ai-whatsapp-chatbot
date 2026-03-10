@@ -49,12 +49,13 @@ const path = require('path');
 // ═══════════════════════════════════════════════════════════
 const { normalizeMessage } = require('./messageNormalizer');
 const { routeMessage } = require('./intentRouter');
-const { initLidDatabase, registerFromContacts, registerFromMe, registerMapping, isLidJid, canResolve } = require('./lidResolver');
+const { initLidDatabase, registerFromContacts, registerFromMe, registerMapping, isLidJid } = require('./lidResolver');
 
 // Direct handlers — bypass AI orchestrator for deterministic actions
 const { isStickerRequest, imageToSticker, videoToSticker, sendSticker } = require('./stickerHandler');
 const { detectWeatherQuery, processWeatherRequest } = require('./weatherHandler');
-const { OWNER_PHONES } = require('./userProfileHelper');
+// userProfileHelper is loaded for side-effect: OWNER_LID env var auto-registration
+require('./userProfileHelper');
 const { smartSend, resilientSend } = require('./messageUtils');
 
 // Legacy imports (still used for lifecycle / helpers)
@@ -513,23 +514,6 @@ const handleConnectionUpdate = async (update, state) => {
             // Register bot's own LID↔phone mapping
             registerFromMe(me);
 
-            // ═══ OWNER LID DISCOVERY ══════════════════════════════
-            // Use onWhatsApp() to discover the owner's LID so we can
-            // resolve owner messages that arrive as @lid JIDs.
-            try {
-                for (const ownerPhone of OWNER_PHONES) {
-                    const results = await sock.onWhatsApp(ownerPhone);
-                    if (results && results[0] && results[0].jid) {
-                        if (isLidJid(results[0].jid)) {
-                            registerMapping(results[0].jid, `${ownerPhone}@s.whatsapp.net`);
-                            console.log(`[Bot] Owner LID discovered via onWhatsApp: ${results[0].jid} → ${ownerPhone}`);
-                        }
-                        // If returned JID is phone format, no LID to register — skip
-                    }
-                }
-            } catch (lidErr) {
-                console.warn('[Bot] Owner LID discovery failed:', lidErr.message);
-            }
             console.log('╔═══════════════════════════════════════════════════════════╗');
             console.log('║        ✅ WHATSAPP CONNECTED SUCCESSFULLY!               ║');
             console.log('╠═══════════════════════════════════════════════════════════╣');
@@ -715,21 +699,6 @@ const processMessage = async (msg) => {
     const normalized = normalizeMessage(msg);
     console.log(`[Bot] ${normalized.pushName} (${sender}): ${(normalized.text || `[${normalized.messageType}]`).slice(0, 80)}`);
 
-    // ═══ LID AUTO-LEARN ═══════════════════════════════════════
-    // When we get a DM from an @lid JID we can't resolve,
-    // try to discover the phone by querying Baileys.
-    if (isLidJid(sender) && !canResolve(sender) && sock) {
-        try {
-            // Try fetchStatus — some Baileys builds include phone in status response
-            const contactInfo = await sock.onWhatsApp(sender.split('@')[0]);
-            if (contactInfo?.[0]?.jid && !isLidJid(contactInfo[0].jid)) {
-                registerMapping(sender, contactInfo[0].jid);
-            }
-        } catch {
-            // Silently ignore — LID discovery is best-effort
-        }
-    }
-
     // Auto memory capture — detect and save implicit memory from chat
     if (normalized.text) {
         try {
@@ -751,6 +720,14 @@ const processMessage = async (msg) => {
     const hasImageOrVideo = normalized.attachments.some(a => a.type === 'image' || a.type === 'video');
     if (hasImageOrVideo && isStickerRequest(normalized.text)) {
         await handleStickerDirect(normalized, msg);
+        return;
+    }
+
+    // 1b. STICKER text-only: user says "stiker/sticker" without attaching image
+    if (!hasImageOrVideo && normalized.text && isStickerRequest(normalized.text)) {
+        await smartSend(sock, normalized.chatId,
+            'kirim gambar atau video dulu cuy, terus tambahin caption "stiker" baru w jadiin stiker ✌️',
+            { quoted: msg });
         return;
     }
 
@@ -816,13 +793,17 @@ const handleStickerDirect = async (normalized, rawMsg) => {
  */
 const handleWeatherDirect = async (normalized, rawMsg, weatherQuery) => {
     const { chatId, senderId, pushName, text } = normalized;
+    console.log(`[Bot] Weather direct handler — type=${weatherQuery.type} city=${weatherQuery.city || 'default'}`);
     try {
         await sock.sendPresenceUpdate('composing', chatId);
         const result = await processWeatherRequest(weatherQuery);
         if (result) {
-            await resilientSend(sock, chatId, { text: result }, { quoted: rawMsg });
+            console.log(`[Bot] Weather result ready (${result.length} chars), sending...`);
+            await smartSend(sock, chatId, result, { quoted: rawMsg });
+            console.log(`[Bot] Weather sent OK`);
         } else {
-            await resilientSend(sock, chatId, { text: 'duh gagal ambil data cuaca bre 😓' }, { quoted: rawMsg });
+            console.log(`[Bot] Weather result empty, sending fallback`);
+            await smartSend(sock, chatId, 'duh gagal ambil data cuaca bre 😓', { quoted: rawMsg });
         }
 
         // Save to conversation history
@@ -830,7 +811,7 @@ const handleWeatherDirect = async (normalized, rawMsg, weatherQuery) => {
         if (result) saveMessage({ chatId, senderJid: 'assistant', senderName: 'Tama AI', role: 'assistant', content: result });
     } catch (err) {
         console.error(`[Bot] Weather direct error:`, err.message);
-        await resilientSend(sock, chatId, { text: 'gagal cek cuaca: ' + err.message }, { quoted: rawMsg });
+        try { await smartSend(sock, chatId, 'gagal cek cuaca: ' + err.message, { quoted: rawMsg }); } catch {}
     }
 };
 

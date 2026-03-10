@@ -13,7 +13,7 @@
  * @version 1.1.0
  */
 
-const { resolveToPhone, isLidJid } = require('./lidResolver');
+const { resolveToPhone, isLidJid, registerMapping } = require('./lidResolver');
 
 // ═══════════════════════════════════════════════════════════
 // OWNER PHONE NUMBERS (canonical, digits only, with 62 prefix)
@@ -21,6 +21,24 @@ const { resolveToPhone, isLidJid } = require('./lidResolver');
 const OWNER_PHONES = [
     '6282210819939',
 ];
+
+// ═══════════════════════════════════════════════════════════
+// OWNER LID — set via OWNER_LID env var when discovered
+// Format: comma-separated LID user parts, e.g. "176854505893937"
+// ═══════════════════════════════════════════════════════════
+const OWNER_LIDS = (process.env.OWNER_LID || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+
+// Auto-register owner LID→phone mapping at import time
+// (runs once when module is first required)
+if (OWNER_LIDS.length > 0 && OWNER_PHONES.length > 0) {
+    for (const lid of OWNER_LIDS) {
+        registerMapping(`${lid}@lid`, `${OWNER_PHONES[0]}@s.whatsapp.net`);
+    }
+    console.log(`[UserProfile] Owner LID(s) registered from env: ${OWNER_LIDS.join(', ')}`);
+}
 
 // ═══════════════════════════════════════════════════════════
 // HELPERS
